@@ -17,6 +17,12 @@ public record DocumentResponse(
 
         @Schema(example = "Utility Bill - March 2026") String title,
 
+        @Schema(description = "Extractive summary: the document's most representative "
+                + "sentences, generated on write.",
+                example = "This statement confirms the occupier of record at the address shown "
+                        + "above for the whole of the billing period.")
+        String summary,
+
         @Schema(example = "Thames Water. Account 8891234. Service address: 12 Acacia Avenue, "
                 + "London N1 4TG. Billing period 01-31 March 2026.")
         String content,

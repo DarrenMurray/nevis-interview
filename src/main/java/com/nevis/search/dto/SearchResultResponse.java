@@ -11,7 +11,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(name = "SearchResult",
         description = """
                 A single search hit. `type` discriminates the kind, and exactly one of `client` \
-                or `document` is present — the other is omitted from the response.""")
+                or `document` is present - the other is omitted from the response.""")
 public record SearchResultResponse(
 
         @Schema(description = "Which kind of entity this hit refers to",

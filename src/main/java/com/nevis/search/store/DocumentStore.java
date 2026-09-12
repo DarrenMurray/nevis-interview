@@ -21,7 +21,7 @@ public class DocumentStore {
         String sql = """
                 INSERT INTO documents (client_id, title, content)
                 VALUES (CAST(:clientId AS uuid), :title, :content)
-                RETURNING id, client_id, title, content, created_at
+                RETURNING id, client_id, title, summary, content, created_at
                 """;
 
         return jdbc.sql(sql)
@@ -32,6 +32,7 @@ public class DocumentStore {
                         rs.getString("id"),
                         rs.getString("client_id"),
                         rs.getString("title"),
+                        rs.getString("summary"),
                         rs.getString("content"),
                         rs.getObject("created_at", OffsetDateTime.class)))
                 .single();

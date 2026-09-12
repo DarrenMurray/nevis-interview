@@ -1,7 +1,7 @@
 # Test overrides.
 #
 # CAREFUL: a file of this name on the test classpath SHADOWS src/main/resources/
-# application.yaml entirely — Spring does not merge the two. Anything the context needs
+# application.yaml entirely - Spring does not merge the two. Anything the context needs
 # must therefore be repeated here, which is why the datasource URL appears below even
 # though no test connects to a database.
 #

@@ -75,7 +75,7 @@ variable "min_instances" {
 variable "state_bucket" {
   description = <<-EOT
     GCS bucket holding Terraform state. Only used to grant the CI Terraform identity
-    access to it — the backend block cannot read variables, so the bucket name is also
+    access to it - the backend block cannot read variables, so the bucket name is also
     hardcoded in versions.tf. Defaults to "<project_id>-tfstate", matching
     scripts/bootstrap-tfstate.sh.
   EOT
@@ -99,10 +99,25 @@ variable "initial_image" {
   description = <<-EOT
     Image the service is first created with. Cloud Run validates that an image is
     pullable at deploy time, and on the very first apply the registry this config creates
-    is still empty — pointing at our own :latest would fail the apply. Google's public
+    is still empty - pointing at our own :latest would fail the apply. Google's public
     hello container stands in until the first real push, after which the push-triggered
     deployer replaces it and `ignore_changes` keeps Terraform from reverting it.
   EOT
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
+variable "alert_email" {
+  description = <<-EOT
+    Address to email when the service receives traffic or logs an error. Leave empty to skip
+    creating the notification channel and alert policies entirely.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "rate_limit_requests_per_minute" {
+  description = "Global request ceiling, passed to the container and quoted in alert text."
+  type        = number
+  default     = 60
 }

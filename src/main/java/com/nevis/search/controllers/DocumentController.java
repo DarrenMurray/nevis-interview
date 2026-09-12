@@ -69,7 +69,9 @@ public class DocumentController {
 
         // Embedded synchronously so the document is searchable as soon as this returns.
         // Deferring it would make a create-then-search sequence non-deterministic.
-        embedder.embed(body);
+        String summary = embedder.embed(body);
+        body = new DocumentResponse(
+                body.id(), body.clientId(), body.title(), summary, body.content(), body.createdAt());
 
         return ResponseEntity
                 .created(URI.create("/clients/" + clientId + "/documents/" + body.id()))

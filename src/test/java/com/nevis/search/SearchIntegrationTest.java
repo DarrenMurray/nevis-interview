@@ -139,6 +139,52 @@ class SearchIntegrationTest {
     }
 
     @Test
+    @DisplayName("every document result carries its own summary")
+    void documentsAreSummarised() {
+        List<SearchResultResponse> results = search.searchDocuments("address proof");
+
+        assertThat(results).isNotEmpty();
+        assertThat(results).allSatisfy(r ->
+                assertThat(r.document().summary()).isNotBlank());
+        // Extractive, so every summary sentence must appear in the document it came from.
+        assertThat(results).allSatisfy(r -> {
+            String firstSentence = r.document().summary().split("(?<=[.!?])\\s+")[0];
+            assertThat(r.document().content()).contains(firstSentence);
+        });
+    }
+
+    @Test
+    @DisplayName("the result-set summary describes the results, never an individual document")
+    void resultSetSummaryIsMeta() {
+        List<SearchResultResponse> results = search.searchDocuments("address proof");
+        String overview = search.summariseResults("address proof", results);
+
+        assertThat(overview)
+                .contains(String.valueOf(results.size()))
+                .contains("address proof")
+                .contains("Utility Bill - March 2026");
+        // No phrase lifted from a document: the previous version quoted one client's account
+        // history to describe results spanning several clients.
+        assertThat(overview).doesNotContain("account holder");
+        // Nothing contains the phrase, so it must say the match was semantic.
+        assertThat(overview).contains("matched on meaning alone");
+    }
+
+    @Test
+    @DisplayName("the summary says so when results did contain the search term")
+    void resultSetSummaryDistinguishesLiteralMatches() {
+        String overview = search.summariseResults("utility bill", search.searchDocuments("utility bill"));
+
+        assertThat(overview).contains("Matched on wording and on meaning.");
+    }
+
+    @Test
+    @DisplayName("summarising nothing yields nothing rather than an error")
+    void summaryOfNoResults() {
+        assertThat(search.summariseResults("zebra unicorn nonsense", List.of())).isNull();
+    }
+
+    @Test
     @DisplayName("unified search returns both kinds, ranked together")
     void unifiedSearchMixesTypes() {
         List<SearchResultResponse> results = search.search("pension");

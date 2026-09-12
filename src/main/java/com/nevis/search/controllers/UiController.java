@@ -43,14 +43,20 @@ public class UiController {
 
     private String renderResults(String kind, String q, Model model) {
         String query = q == null ? "" : q.trim();
+        boolean documents = "documents".equals(kind);
+
+        var results = query.isEmpty()
+                ? java.util.List.<com.nevis.search.dto.SearchResultResponse>of()
+                : documents
+                        ? searchService.searchDocuments(query)
+                        : searchService.searchClients(query);
+
         model.addAttribute("query", query);
         model.addAttribute("kind", kind);
         model.addAttribute("blank", query.isEmpty());
-        model.addAttribute("results", query.isEmpty()
-                ? java.util.List.of()
-                : "clients".equals(kind)
-                        ? searchService.searchClients(query)
-                        : searchService.searchDocuments(query));
+        model.addAttribute("results", results);
+        // Only documents carry summaries; a client is already a one-line thing.
+        model.addAttribute("overview", documents ? searchService.summariseResults(query, results) : null);
         return "fragments/results :: results";
     }
 }

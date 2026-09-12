@@ -63,7 +63,7 @@ jobs:
 
           # Decided in shell, not in a GitHub expression. On a push event
           # inputs.tag_latest is empty, and `== false` coerces both sides to numbers, so
-          # '' == false is TRUE — an expression here would silently skip :latest on
+          # '' == false is TRUE - an expression here would silently skip :latest on
           # merges to main and never deploy. Only an explicit dispatch opts out.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
              && [ "${{ inputs.tag_latest }}" = "false" ]; then

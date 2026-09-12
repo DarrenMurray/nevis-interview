@@ -30,3 +30,16 @@ springdoc:
     tags-sorter: alpha
     operations-sorter: method
     display-request-duration: true
+
+logging:
+  structured:
+    format:
+      # One JSON object per line, in Cloud Logging's shape. Overridden to empty locally by the
+      # `local` profile so the console stays readable.
+      console: com.nevis.search.observability.CloudLoggingFormatter
+
+search:
+  rate-limit:
+    # Global across the service, not per caller: the API is unauthenticated, so there is no
+    # identity to meter against, and the point is to bound spend on a personal account.
+    requests-per-minute: 60

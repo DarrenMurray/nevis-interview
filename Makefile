@@ -10,7 +10,7 @@
 JDK   ?= $(HOME)/.jdks/current
 MVN   := JAVA_HOME=$(JDK) ./mvnw -B
 
-# Local, uncommitted values (project id, region). Optional — the leading dash means a
+# Local, uncommitted values (project id, region). Optional - the leading dash means a
 # missing .env is not an error, so a fresh clone still builds and tests.
 -include .env
 
@@ -25,18 +25,16 @@ GCP_PROJECT ?= $(TF_VAR_project_id)
 
 # .env uses Terraform's own TF_VAR_* names, so these are re-exported as-is rather than
 # mapped from differently-named variables. That way the same file works for `make`, for a
-# plain `set -a; . ./.env; set +a` shell, and for CI — one set of names, no translation
+# plain `set -a; . ./.env; set +a` shell, and for CI - one set of names, no translation
 # layer to drift.
 #
 # Exported only when non-empty: an exported but empty TF_VAR_region would override the
 # variable's default with "" instead of leaving it unset, which is a confusing way to
 # deploy into a nonexistent region.
-ifneq ($(strip $(TF_VAR_project_id)),)
-export TF_VAR_project_id
-endif
-ifneq ($(strip $(TF_VAR_region)),)
-export TF_VAR_region
-endif
+# Export every TF_VAR_* that .env defines, rather than naming them one by one: a hardcoded
+# list silently drops any new variable, which is how TF_VAR_alert_email was read by make and
+# never reached terraform.
+$(foreach v,$(filter TF_VAR_%,$(.VARIABLES)),$(if $(strip $($(v))),$(eval export $(v))))
 
 IMAGE ?= nevis/search-api
 TAG   ?= dev
@@ -53,7 +51,7 @@ DOCKER_BUILD_FLAGS ?= --progress=plain
 
 # Plain `docker`, deliberately. An earlier version auto-detected with
 # `$(shell docker info ... || echo sudo docker)`, which silently turned every docker
-# target into a sudo target — and make suppresses the recipe echo, so the sudo password
+# target into a sudo target - and make suppresses the recipe echo, so the sudo password
 # prompt appeared with no visible command and looked exactly like a hang.
 #
 # If the daemon is not reachable, check-docker below says so immediately. To use sudo
@@ -89,7 +87,7 @@ clean: check-jdk
 check-docker:
 	@# stdout only. NEVER redirect stderr here: with DOCKER="sudo docker" the password
 	@# prompt is written to stderr, and discarding it leaves sudo waiting on an
-	@# invisible prompt — silence that looks like nothing happening at all.
+	@# invisible prompt - silence that looks like nothing happening at all.
 	@$(DOCKER) info >/dev/null || { \
 		echo "Cannot reach the Docker daemon as '$(DOCKER)'."; \
 		echo ""; \
@@ -120,10 +118,10 @@ ci: test docker-build docker-smoke
 
 ## docker-login  Authenticate Docker against Artifact Registry
 docker-login: check-docker
-	@test -n "$(TF_VAR_project_id)" || { echo "TF_VAR_project_id not set — is .env present?"; exit 1; }
+	@test -n "$(TF_VAR_project_id)" || { echo "TF_VAR_project_id not set - is .env present?"; exit 1; }
 	@# An access token piped into `docker login` rather than `gcloud auth configure-docker`:
 	@# the credential helper reads $$HOME/.docker/config.json, and under `sudo docker` that is
-	@# root's config, not yours — so the helper silently has no credentials.
+	@# root's config, not yours - so the helper silently has no credentials.
 	gcloud auth print-access-token | $(DOCKER) login -u oauth2accesstoken --password-stdin https://$(TF_VAR_region)-docker.pkg.dev
 
 ## docker-push   Build and push :latest to Artifact Registry (this fires the deploy)
@@ -131,7 +129,7 @@ docker-push: docker-login
 	$(DOCKER) build $(DOCKER_BUILD_FLAGS) -t $(REMOTE_IMAGE):latest .
 	$(DOCKER) push $(REMOTE_IMAGE):latest
 	@echo
-	@echo "Pushed $(REMOTE_IMAGE):latest — the Cloud Build trigger should now deploy it."
+	@echo "Pushed $(REMOTE_IMAGE):latest - the Cloud Build trigger should now deploy it."
 	@echo "Watch:  gcloud builds list --region $(TF_VAR_region) --limit 3"
 
 ## docker-stop   Stop the running container
@@ -147,6 +145,7 @@ tf-bootstrap:
 tf-config:
 	@echo "TF_VAR_project_id = $${TF_VAR_project_id:-(unset - terraform will prompt)}"
 	@echo "TF_VAR_region     = $${TF_VAR_region:-(unset - defaults to europe-west2)}"
+	@echo "TF_VAR_alert_email= $${TF_VAR_alert_email:-(unset - alerting disabled)}"
 	@sed -n 's/.*bucket *= *"\(.*\)".*/state bucket      = \1/p' $(TF_DIR)/versions.tf
 
 ## tf-init       Initialise Terraform against the GCS backend
@@ -179,7 +178,7 @@ check-jdk:
 
 ## help          List available targets
 help:
-	@echo "Nevis search-api — available targets:"
+	@echo "Nevis search-api - available targets:"
 	@# -h suppresses filename prefixes: MAKEFILE_LIST includes .env, so grep sees >1 file.
 	@grep -hE '^## ' $(MAKEFILE_LIST) | sed -E 's/^## /  /'
 	@echo ""

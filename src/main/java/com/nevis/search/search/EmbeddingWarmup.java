@@ -7,7 +7,7 @@ import org.springframework.ai.transformers.TransformersEmbeddingModel;
  *
  * <p>Not part of the running application. DJL fetches native libraries on first use and caches
  * them under {@code DJL_CACHE_DIR}; running this during the build populates that cache so the
- * container never downloads anything. Without it the first embed pulls ~200MB of natives — on
+ * container never downloads anything. Without it the first embed pulls ~200MB of natives - on
  * Cloud Run with min-instances 0, that is every cold start.
  */
 public final class EmbeddingWarmup {

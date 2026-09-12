@@ -1,28 +1,51 @@
-# nevis-interview — Search API
+# nevis-interview
 
-Take-home assignment for Nevis: a search API over **clients** and **client documents** for a
-WealthTech advisor platform.
+Take-home assignment for Nevis: a search API over **clients** and **documents**.
 
 ### Preview the App: https://search-api-mjikdl7cpq-nw.a.run.app/
-Example Client search : ""
 
-Example Document search : ""
+Example **client** search - `NevisWealth`
 
-See sample Dataset for more search examples:
+Example **document** search - `address proof`
+
+More to try against the [sample dataset](src/main/resources/db/migration/V2__seed.sql):
+`pension`, `farm`, `retirement income`, `inheritance tax`, `8891234`.
 
 ### Technologies
 
-- **Java 25** (the build will refuse anything older with an actionable message)
-- **Docker + Compose** — for the local Postgres. Not needed to run `make test`, which is
-  deliberately database-free
-- Maven is **not** required — use the committed wrapper (`./mvnw`)
-- ...
+|  | |
+|---|---|
+| **Java 25**, **Spring Boot 4.1** | build refuses an older JDK with an actionable message |
+| **PostgreSQL 16** + **pgvector**, **pg_trgm**, **citext** | vector, trigram and case-insensitive matching |
+| **Flyway** | schema and demo data, applied at startup |
+| **Spring AI** + **ONNX Runtime** (`all-MiniLM-L6-v2`) | embeddings in-process  |
+| **Thymeleaf** + **htmx** | server-rendered UI, htmx vendored rather than CDN-loaded |
+| **springdoc** | OpenAPI 3.1 generated from annotations |
+| **Testcontainers** | integration tests against real Postgres |
+| **Docker Compose** | local stack; needed for `make test` but not for the build |
+| **Terraform**, **Cloud Run**, **Cloud SQL** | deployment, redeployed on image push |
 
 ### Directory Tree
-...
 
-### Component Diagram
-- ...
+```
+src/main/java/com/nevis/search/
+    SearchApiApplication.java
+    controllers/            HTTP layer - JSON API and the HTML UI routes
+    dto/                    request/response records
+    search/                 SearchService, shared by the API and the UI
+    config/                 OpenAPI metadata
+src/main/resources/
+    application.yaml        datasource, Flyway, Jackson, springdoc
+    db/migration/           Flyway migrations - schema, extensions, indexes
+    templates/              Thymeleaf page and result fragment
+    static/vendor/          htmx, vendored rather than CDN-loaded
+docker-compose.yml          local stack: API + Postgres/pgvector
+Dockerfile                  multi-stage, layered, non-root
+Makefile                    single entry point for build, test, docker, terraform
+scripts/                    image smoke test, state-bucket bootstrap
+terraform/                  GCP: Cloud Run, Cloud SQL, registry, push-triggered deploy
+.github/workflows/          test, publish-image, deploy
+```
 
 ## Developer Guide
 
@@ -33,40 +56,20 @@ docker compose up --build     # API on :8080, Postgres on :5432
 ```
 
 The app applies its own Flyway migrations at startup, so the
-database provisions itself on first run — no init script, no manual `psql`.
+database provisions itself on first run - no init script, no manual `psql`.
 
 ```sh
 make          # run all tests (default target; needs no database)
-make run      # start the API alone on :8080 — expects Postgres to be reachable
+make run      # start the API alone on :8080 - expects Postgres to be reachable
 make help     # list every target and the resolved settings
 ```
 
-`make run` connects to `localhost:5432` as `search_api`/`search_api` by default, which matches
-compose — so `docker compose up db` plus `make run` is a workable loop if you want the app on
-the host and only the database in a container.
 
-If your `java` is not 25, point `make` at one explicitly:
-
-```sh
-make JDK=/path/to/jdk-25 test
-```
-
-The variable is `JDK`, **not** `JAVA_HOME` — an inherited `JAVA_HOME` from an older JDK would
-otherwise win silently and produce a confusing compile failure.
 
 #### UI
 
-`http://localhost:8080/` serves a search page: a centred box and two buttons, **Find Documents**
-and **Find Clients**. Each button calls its own endpoint, and the chosen button decides which of
-the two search strategies runs.
+`http://localhost:8080/` serves the main search page
 
-Server-rendered with Thymeleaf; [htmx](https://htmx.org) swaps the results fragment in without a
-page reload. htmx is **vendored** at `/vendor/htmx.min.js` rather than loaded from a CDN, so the
-page works with no outbound network access.
-
-The UI and the JSON API share one `SearchService`, so the page cannot drift from what the API
-reports. UI routes live under `/ui/**`, return HTML fragments, and are excluded from the OpenAPI
-document — which describes the API, not the page.
 
 ## API
 
@@ -78,174 +81,127 @@ Interactive documentation is generated from annotations and served by the runnin
 | **OpenAPI 3.1 JSON** | <http://localhost:8080/v3/api-docs> |
 | **OpenAPI 3.1 YAML** | <http://localhost:8080/v3/api-docs.yaml> |
 
-There is no checked-in spec file to drift out of date — the document is built from `@Operation`,
-`@ApiResponse` and `@Schema` annotations on the controllers and DTOs. A contract test asserts the
-generated schemas match what the endpoints actually return (see [Testing](#testing)).
+| Verb | Path | Purpose | Body / Params | Success | Errors |
+|---|---|---|---|---|---|
+| `POST` | `/clients` | Create a client | `first_name`, `last_name`, `email` required; `description`, `social_links` optional | `201` + `Location` | `400` invalid email or missing field · `409` duplicate email (case-insensitive) |
+| `POST` | `/clients/{id}/documents` | Attach a document; embedded on write, so searchable immediately | `title`, `content` both required | `201` + `Location` | `400` blank field · `404` unknown client |
+| `GET` | `/search` | Both kinds, ranked together | `q` (required) | `200` array | `400` blank `q` |
+| `GET` | `/search/clients` | Clients only - lexical (trigram + full-text) | `q` (required) | `200` array | `400` blank `q` |
+| `GET` | `/search/documents` | Documents only - semantic + lexical | `q` (required) | `200` array | `400` blank `q` |
 
-The reference below is the same information in prose form.
 
-Base URL `http://localhost:8080`. All request and response bodies are `application/json`, and all
-field names are **`snake_case`**.
-
----
-
-### `POST /clients`
-
-Create a client.
-
-**Body** — `first_name`, `last_name` and `email` are required; `description` and `social_links` are
-optional.
-
-```sh
-curl -X POST localhost:8080/clients \
-  -H 'Content-Type: application/json' \
-  -d '{
-        "first_name": "John",
-        "last_name": "Doe",
-        "email": "john.doe@neviswealth.com",
-        "description": "Retired engineer; cautious, income-focused portfolio.",
-        "social_links": ["https://www.linkedin.com/in/johndoe"]
-      }'
+```json
+{ "type": "document", "score": 0.299, "document": { "id": "...", "title": "Utility Bill - March 2026", "...": "..." } }
 ```
 
-**`201 Created`** with `Location: /clients/f7231496-3fcc-474c-bf02-930aecbd37af`
+`type` is `client` or `document`, and exactly one of those two keys is present. `score` is 0-1:
+trigram similarity for clients, cosine similarity for documents.
+
+### Creating a client
+
+```sh
+curl -X POST localhost:8080/clients -H 'Content-Type: application/json' -d '{
+  "first_name": "Ada",
+  "last_name": "Lovelace",
+  "email": "ada.lovelace@neviswealth.com",
+  "description": "Semi-retired; conservative income portfolio.",
+  "social_links": ["https://www.linkedin.com/in/adalovelace"]
+}'
+```
+
+`201 Created`, `Location: /clients/403cf1ad-cb6c-4ab0-9872-ac12d0f16cea`
 
 ```json
 {
-  "id": "f7231496-3fcc-474c-bf02-930aecbd37af",
-  "first_name": "John",
-  "last_name": "Doe",
-  "email": "john.doe@neviswealth.com",
-  "description": "Retired engineer; cautious, income-focused portfolio.",
-  "social_links": ["https://www.linkedin.com/in/johndoe"]
+  "id": "403cf1ad-cb6c-4ab0-9872-ac12d0f16cea",
+  "first_name": "Ada",
+  "last_name": "Lovelace",
+  "email": "ada.lovelace@neviswealth.com",
+  "description": "Semi-retired; conservative income portfolio.",
+  "social_links": ["https://www.linkedin.com/in/adalovelace"]
 }
 ```
 
-| Status | When |
-|---|---|
-| `201` | created |
-| `400` | missing required field, or `email` is not a valid address |
-| `409` | *(planned)* a client with that email already exists |
-
----
-
-### `POST /clients/{id}/documents`
-
-Attach a document to a client. `title` and `content` are both required.
+### Creating a document
 
 ```sh
-curl -X POST localhost:8080/clients/f7231496-3fcc-474c-bf02-930aecbd37af/documents \
-  -H 'Content-Type: application/json' \
-  -d '{
-        "title": "Utility Bill - March 2026",
-        "content": "Thames Water. Account 8891234. Service address: 12 Acacia Avenue, London N1 4TG. Billing period 01-31 March 2026."
-      }'
+curl -X POST localhost:8080/clients/403cf1ad-cb6c-4ab0-9872-ac12d0f16cea/documents \
+  -H 'Content-Type: application/json' -d '{
+  "title": "Home Insurance Schedule",
+  "content": "Buildings and contents cover for the property at 9 Larch Way. The policyholder is recorded as living at the insured address throughout the period of cover. Sum insured GBP 450,000. Excess GBP 250 per claim. Renewal date 14 August 2026."
+}'
 ```
 
-**`201 Created`** with `Location: /clients/{client_id}/documents/{id}`
+`201 Created`, `Location: /clients/{client_id}/documents/377da3c1-37d2-4152-bc18-086d135e3430`
 
 ```json
 {
-  "id": "17a32d53-eb66-4364-a8aa-f690b8e79868",
-  "client_id": "f7231496-3fcc-474c-bf02-930aecbd37af",
-  "title": "Utility Bill - March 2026",
-  "content": "Thames Water. Account 8891234. Service address: 12 Acacia Avenue, London N1 4TG. Billing period 01-31 March 2026.",
-  "created_at": "2026-09-12T14:20:35.754252647+01:00"
+  "id": "377da3c1-37d2-4152-bc18-086d135e3430",
+  "client_id": "403cf1ad-cb6c-4ab0-9872-ac12d0f16cea",
+  "title": "Home Insurance Schedule",
+  "summary": "Buildings and contents cover for the property at 9 Larch Way. The policyholder is recorded as living at the insured address throughout the period of cover.",
+  "content": "Buildings and contents cover for the property at 9 Larch Way. ...",
+  "created_at": "2026-09-12T19:36:51.212208Z"
 }
 ```
 
-| Status | When |
+The document is embedded and summarised **during** the request, so it is searchable as soon as
+this returns. `summary` is extractive: every sentence in it appears in the document itself.
+
+### Rate limiting
+
+**60 requests per minute, globally across the service**, on every endpoint except static assets
+and the API docs.
+
+The limit is deliberately aggressive. This runs on a personal Google Cloud account, and the API is
+public and unauthenticated, so the ceiling exists to bound the bill rather than to be fair between
+callers. There is no trustworthy identity to meter against, and per-IP limiting would be both
+trivially defeated and useless against a spend-out from many addresses, so one global bucket it is.
+
+Tokens **refill continuously**, roughly one per second, rather than resetting on the minute. Once
+exhausted you are limited until enough have accrued, and a rejected request does **not** consume a
+token, so retrying while limited does not dig the hole deeper.
+
+| | |
 |---|---|
-| `201` | created |
-| `400` | `title` or `content` missing or blank |
-| `404` | *(planned)* no client with that `id` |
-
----
-
-### `GET /search?q={query}`
-
-Search across clients and documents. `q` is required and must not be blank.
-
-Returns a **flat array of hits of both kinds**. Each hit is a tagged union: `type` discriminates,
-and exactly one of `client` or `document` is present. The OpenAPI spec leaves search items as a bare
-object and invites extending responses, so `type` and `score` are additions — without a
-discriminator a client and a document are indistinguishable to a consumer.
-
-```sh
-curl 'localhost:8080/search?q=NevisWealth'
-```
-
-**`200 OK`** — currently always `[]`. The intended shape once search is implemented:
-
-```json
-[
-  {
-    "type": "client",
-    "score": 0.91,
-    "client": {
-      "id": "f7231496-3fcc-474c-bf02-930aecbd37af",
-      "first_name": "John",
-      "last_name": "Doe",
-      "email": "john.doe@neviswealth.com",
-      "description": "Retired engineer; cautious, income-focused portfolio.",
-      "social_links": ["https://www.linkedin.com/in/johndoe"]
-    }
-  },
-  {
-    "type": "document",
-    "score": 0.78,
-    "document": {
-      "id": "17a32d53-eb66-4364-a8aa-f690b8e79868",
-      "client_id": "f7231496-3fcc-474c-bf02-930aecbd37af",
-      "title": "Utility Bill - March 2026",
-      "content": "Thames Water. Account 8891234. Service address: 12 Acacia Avenue, London N1 4TG...",
-      "created_at": "2026-09-12T14:20:35.754252647+01:00"
-    }
-  }
-]
-```
-
-| Status | When |
-|---|---|
-| `200` | results, **or an empty array** — no match is a valid result, not a missing resource, so never `404` |
-| `400` | `q` absent, empty, or whitespace only |
-
-Verified today:
-
-```
-GET /search?q=NevisWealth      -> 200 []
-GET /search?q=address%20proof  -> 200 []
-GET /search                    -> 400
-GET /search?q=                 -> 400
-```
-
----
-
-### `GET /search/clients?q={query}` · `GET /search/documents?q={query}`
-
-The same contract as `/search`, restricted to one kind. These are what the UI's two buttons call.
-
-| Endpoint | Strategy |
-|---|---|
-| `/search/clients` | lexical — trigram over email, name, description |
-| `/search/documents` | semantic — cosine distance over content embeddings |
-
-Same status codes as `/search`: `200` with a possibly-empty array, `400` on a blank `q`.
-
-### Errors
-
-Validation failures return Spring's default error body:
+| Exceeded | `429 Too Many Requests` |
+| `Retry-After` | seconds until a token is available |
+| `X-RateLimit-Limit` | configured requests per minute |
+| `X-RateLimit-Remaining` | tokens currently in the bucket |
 
 ```json
 {
-  "timestamp": "2026-09-12T13:20:25.543Z",
-  "status": 400,
-  "error": "Bad Request",
-  "path": "/clients"
+  "status": 429,
+  "error": "Too Many Requests",
+  "message": "Rate limit of 60 requests per minute exceeded. Tokens refill continuously; retry in 17 second(s).",
+  "retry_after_seconds": 17
 }
 ```
 
-Per-field validation detail is not yet exposed.
+Configurable with `search.rate-limit.requests-per-minute`. One caveat: the bucket is per
+container, so with Cloud Run scaling to N instances the effective ceiling is N times the rate.
+Max instances is kept low for that reason.
+
+### Logging
+
+Every request emits one structured JSON line, plus a line per search and per failure. Fields are
+uniform, so a search is traceable end to end by `request_id`:
+
+```json
+{"severity":"INFO","message":"Request handled","http_method":"GET","http_path":"/search",
+ "http_status":"200","duration_ms":"314","client_ip":"172.18.0.1","user_agent":"curl/7.81.0",
+ "search_term":"address proof","request_id":"2e599aea-44fe-4f87-93c9-139de0e43448"}
+```
+
+`severity` and `message` are top-level because that is what Cloud Logging keys off; Spring Boot's
+built-in ECS and Logstash formats would land every line as DEFAULT severity, losing the
+distinction between info and error. Every MDC field is promoted to a top-level key, so
+`search_term` and `client_ip` are queryable in Logs Explorer rather than buried in a string.
+
+`X-Request-Id` is echoed on every response, and is accepted on the way in so a trace survives
+across services. Expected failures log at `WARNING` without a stack trace; unexpected ones at
+`ERROR` with one, which is what Cloud Error Reporting picks up. Search terms are truncated at 200
+characters, and static assets are not logged at all.
 
 ## Data model
 
@@ -267,183 +223,22 @@ email comparison case-insensitive without scattering `lower()` through every que
 [`V2__seed.sql`](src/main/resources/db/migration/V2__seed.sql) seeds 6 clients and 13 documents.
 It is a migration rather than a local-only script, so the deployed demo has content too.
 
-The documents are worded the way real paperwork is — a water bill, a council tax demand, a
-passport scan, a tenancy agreement. **None of them contains the phrase "address proof"**, so that
-query can only ever succeed through semantic similarity rather than by accidentally matching text.
-
-Two clients share the `neviswealth.com` domain, so `?q=NevisWealth` returns both — which is the
-realistic outcome, not a single contrived hit.
-
 ## How search works
 
 The two cases in the brief need different machinery, so they are two queries with two ranking
 functions rather than one clever query attempting both.
 
-**Clients — lexical.** A trigram GIN index over the concatenated searchable text:
+**Clients - lexical.** A trigram GIN index over the concatenated searchable text:
 
-```sql
-CREATE INDEX clients_trgm_idx ON clients
-    USING gin ((first_name || ' ' || last_name || ' ' || email || ' ' || coalesce(description, '')) gin_trgm_ops);
-```
-
-This is what makes `?q=NevisWealth` match `john.doe@neviswealth.com` — an `ILIKE '%neviswealth%'`
-can use this index, and `word_similarity()` ranks the hits.
-
-> Worth knowing why full-text search is *not* the tool for that case: Postgres' default parser
-> treats `john.doe@neviswealth.com` as a single `email` token, so a `tsquery` for `neviswealth`
-> never matches it. Full-text search earns its place on prose — the `description` field — not on
-> identifiers, and there is a separate `tsvector` index for exactly that.
-
-**Documents — semantic.** `"address proof"` and `"utility bill"` share no characters, so no
+**Documents - semantic.** `"address proof"` and `"utility bill"` share no characters, so no
 lexical index can connect them. Each document's content is embedded once on write into a
 384-number vector; the query is embedded the same way at search time; hits are ranked by cosine
 distance:
 
-```sql
-SELECT id, title FROM documents ORDER BY embedding <=> $1 LIMIT 10;
-```
-
-The HNSW index (`vector_cosine_ops`) is built on the empty table, which is the cheap moment —
-unlike `ivfflat`, which needs representative data present before it can choose sensible cluster
-centroids. 384 dimensions sits well inside pgvector's 2000-dimension HNSW ceiling.
-
-There is also a `tsvector` index over document text, because exact terms — an account number, a
-reference code — are precisely what embeddings are worst at.
-
-### Embeddings run locally
-
-`all-MiniLM-L6-v2` via ONNX Runtime, in-process, with the weights baked into the image. No
-external embedding or LLM API, no API key, and no network call at request time — the whole stack
-runs offline from `docker compose up`.
 
 ## Testing
 
 ```sh
-make test      # all tests — no database or Docker required
-make ci        # what CI runs: tests, image build, image smoke test
+make test  
+make ci
 ```
-
-The tests are deliberately **database-free**: `src/test/resources/application.yaml` disables Flyway
-and stops the connection pool attempting a connection during context startup, so `make test` runs
-anywhere. Tests that exercise SQL should use Testcontainers with `@ServiceConnection`, which
-overrides those settings per test.
-
-> That file **shadows** `src/main/resources/application.yaml` rather than merging with it — Spring
-> does not combine same-named config files. Anything the context needs has to be repeated there,
-> which is why it carries a datasource URL that nothing ever connects to.
-
-`OpenApiContractTest` is the interesting one: it asserts the OpenAPI document is 3.1, covers all
-three endpoints, advertises the right required fields, and — crucially — that every documented
-schema property matches the field names the API really serves. Boot 4 serialises with Jackson 3
-while swagger-core builds schemas with its own Jackson 2, so the document silently drifts to
-`firstName` while the API returns `first_name` unless corrected. That test fails if the correction
-is ever removed.
-
-CI is [`.github/workflows/test.yml`](.github/workflows/test.yml), which runs on pushes to `main`,
-on pull requests, and on manual dispatch. Two parallel jobs, both driven through `make`:
-
-- **tests** — JDK 25 via `setup-java`, then `make test`
-- **image** — `make docker-build`, then `make docker-smoke`, which brings up the compose stack and
-  asserts `GET /search` returns `200` *and* that the schema migrated. The only check covering the
-  Dockerfile, the migrations and the healthcheck ordering; the Maven suite touches none of them.
-
-## Docker
-
-```sh
-docker compose up --build   # the whole local stack: API + Postgres
-make docker-build           # build nevis/search-api:dev
-make docker-push            # build and push to Artifact Registry (triggers a deploy)
-make docker-smoke           # bring up the stack and assert it serves traffic
-```
-
-`docker-compose.yml` runs `pgvector/pgvector:0.8.6-pg16` alongside the API. The database
-healthcheck is `pg_isready` rather than a TCP probe: Postgres accepts connections briefly during
-initialisation while still rejecting queries, which would let the API start and then fail its
-migrations. The API waits on `condition: service_healthy`.
-
-Multi-stage build: `eclipse-temurin:25-jdk-noble` compiles and splits the Spring Boot fat jar into
-layers with `-Djarmode=tools ... extract --layers`, and `25-jre-noble` runs them as an unprivileged
-user. Dependencies resolve before `src/` is copied, so editing source does not re-download Maven,
-and dependency layers are not re-pushed when only application code changes.
-
-Pass JVM flags with `JAVA_TOOL_OPTIONS` — the JVM reads it natively, so the entrypoint stays
-shell-free and signals are handled correctly.
-
-> If the Docker socket is root-owned with no `docker` group, every docker target fails fast with
-> the fix printed rather than hanging. Run them as `make docker-build DOCKER="sudo docker"`, or
-> create the group so no sudo is needed at all.
-
-## Deployment
-
-GCP, defined in [`terraform/`](terraform/) — see [terraform/README.md](terraform/README.md)
-for the apply steps. **Not yet applied; nothing is running.**
-
-```
-merge to main ─┐
-               ├─► publish-image.yml ─► Artifact Registry ─► Pub/Sub "gcr" ─► Cloud Build ─► Cloud Run
-manual button ─┘    (:latest + :sha-)
-```
-
-- **Publishing** — [`.github/workflows/publish-image.yml`](.github/workflows/publish-image.yml)
-  builds and pushes on every merge to `main`, and on demand via **Run workflow** on the
-  Actions tab. Always tags `:latest`, plus `:sha-<short>` so a previous build can still be
-  named for rollback.
-- **Deploying** — Artifact Registry publishes to the `gcr` Pub/Sub topic on push; a
-  filtered Cloud Build trigger runs `gcloud run deploy`. Push and deploy are decoupled, so
-  an image pushed by hand rolls out like one pushed by CI.
-- **Auth** — Workload Identity Federation, scoped to this repository. No service account
-  key exists to leak.
-- **State** — remote, in a GCS bucket with versioning and lifecycle rules, so local and CI
-  runs share one state object and locking is handled by GCS. Create it once with
-  `make tf-bootstrap`; the bucket cannot be a Terraform resource because `init` needs it
-  to already exist.
-- **Infrastructure changes** — [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
-  plans on pull requests touching `terraform/**`, applies on merge to `main`, and takes a
-  manual plan-or-apply dispatch. It applies the saved plan file, so what was reviewed is
-  what runs. The first apply must be local, since the workflow's own service account is
-  created by Terraform.
-
-Worth knowing: **Cloud Run pins an image digest at deploy time**, so moving `:latest`
-alone changes nothing. The Cloud Build trigger is what makes push-to-update real.
-
-**Database.** Cloud SQL Postgres 16 on a private IP, reached over direct VPC egress — the instance
-has no public address. The password is generated by Terraform, stored in Secret Manager, and
-injected into the container via `secret_key_ref`, so it is not readable from the service
-definition. `enable_cloud_sql` defaults to **true**: the app runs Flyway at startup and exits if it
-cannot reach a database, so with it disabled the service crash-loops rather than degrading. It
-bills hourly from creation.
-
-**Memory is 2 GiB, not 1.** The JVM shares the instance with ONNX Runtime and the embedding model
-weights. At 1 GiB the container starts fine and is OOM-killed on the first embed, which is a much
-harder failure to read than one at boot.
-
-Apply Terraform **before** pushing a new image: an image that boots with no `DB_URL` will
-crash-loop.
-
-Cloud Run rather than Compute Engine because a GCE VM or managed instance group cannot
-redeploy itself when an image is pushed — the rollout would need driving externally
-anyway, and the VM bills whether or not traffic arrives.
-
-## Layout
-
-```
-src/main/java/com/nevis/search/
-    SearchApiApplication.java
-    controllers/            HTTP layer — JSON API and the HTML UI routes
-    dto/                    request/response records
-    search/                 SearchService, shared by the API and the UI
-    config/                 OpenAPI metadata
-src/main/resources/
-    application.yaml        datasource, Flyway, Jackson, springdoc
-    db/migration/           Flyway migrations — schema, extensions, indexes
-    templates/              Thymeleaf page and result fragment
-    static/vendor/          htmx, vendored rather than CDN-loaded
-docker-compose.yml          local stack: API + Postgres/pgvector
-Dockerfile                  multi-stage, layered, non-root
-Makefile                    single entry point for build, test, docker, terraform
-scripts/                    image smoke test, state-bucket bootstrap
-terraform/                  GCP: Cloud Run, Cloud SQL, registry, push-triggered deploy
-.github/workflows/          test, publish-image, deploy
-```
-
-

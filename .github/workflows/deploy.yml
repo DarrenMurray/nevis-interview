@@ -27,7 +27,7 @@ on:
 
 permissions:
   contents: read
-  # Required for Workload Identity Federation — without it the auth step cannot mint an
+  # Required for Workload Identity Federation - without it the auth step cannot mint an
   # OIDC token and fails.
   id-token: write
 
@@ -41,6 +41,9 @@ env:
   # Terraform reads TF_VAR_* from the environment, the same mechanism .env uses locally.
   TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
   TF_VAR_region: ${{ secrets.GCP_REGION }}
+  # Optional. Unset resolves to an empty string, which skips the notification channel and both
+  # alert policies, so the stack still applies without it.
+  TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
   # Removes interactive prompts and trims CI-hostile output.
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "false"
@@ -54,7 +57,7 @@ jobs:
 
       - name: Fail fast if secrets are missing
         # An unset secret is an empty string, and Terraform would treat that as a real
-        # value — an empty project_id produces a confusing mid-apply API error rather
+        # value - an empty project_id produces a confusing mid-apply API error rather
         # than an obvious configuration mistake.
         run: |
           set -euo pipefail

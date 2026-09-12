@@ -1,0 +1,5 @@
+# Human-readable console logging for local runs. Activate with SPRING_PROFILES_ACTIVE=local.
+logging:
+  structured:
+    format:
+      console: ""

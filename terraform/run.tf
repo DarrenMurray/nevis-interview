@@ -63,6 +63,11 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       env {
+        name  = "SEARCH_RATE_LIMIT_REQUESTS_PER_MINUTE"
+        value = tostring(var.rate_limit_requests_per_minute)
+      }
+
+      env {
         name = "JAVA_TOOL_OPTIONS"
         # Container memory is not the host's; size the heap from the cgroup limit.
         value = "-XX:MaxRAMPercentage=75"
