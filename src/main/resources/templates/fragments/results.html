@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!-- Swapped into #results by htmx. Rendered for both buttons; `kind` says which ran. -->
+<div th:fragment="results">
+    <style>
+        .summary { color: var(--muted); font-size: .875rem; margin: 8px 0 12px; }
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            background: var(--panel);
+        }
+        .card h3 { margin: 0 0 4px; font-size: 1rem; font-weight: 600; }
+        .card .meta { color: var(--muted); font-size: .8125rem; }
+        .card .body { margin-top: 8px; font-size: .9375rem; }
+        .badge {
+            display: inline-block; padding: 1px 8px; border-radius: 999px;
+            border: 1px solid var(--line); font-size: .75rem; color: var(--muted);
+        }
+        .empty { color: var(--muted); text-align: center; padding: 20px 0; }
+        .empty code { font-size: .875rem; }
+    </style>
+
+    <p class="empty" th:if="${blank}">
+        Type something to search.
+    </p>
+
+    <div th:unless="${blank}">
+        <p class="summary">
+            <span th:text="${#lists.size(results)}">0</span>
+            <span th:text="${kind == 'clients'} ? 'client match(es)' : 'document match(es)'">matches</span>
+            for <strong th:text="${query}">query</strong>
+        </p>
+
+        <p class="empty" th:if="${#lists.isEmpty(results)}">
+            No matches.
+            <br>
+            <!-- Honest about the current state: search is not implemented yet, so this is
+                 always the outcome. Better to say so than to look broken. -->
+            <small>Search is not implemented yet &mdash; the API returns an empty list for
+                every query, so this is expected.</small>
+        </p>
+
+        <div th:each="r : ${results}" class="card">
+            <span class="badge" th:text="${r.type}">type</span>
+
+            <div th:if="${r.client != null}">
+                <h3 th:text="${r.client.firstName} + ' ' + ${r.client.lastName}">Name</h3>
+                <div class="meta" th:text="${r.client.email}">email</div>
+                <div class="body" th:if="${r.client.description != null}"
+                     th:text="${r.client.description}">description</div>
+            </div>
+
+            <div th:if="${r.document != null}">
+                <h3 th:text="${r.document.title}">Title</h3>
+                <div class="meta">
+                    client <span th:text="${r.document.clientId}">id</span>
+                </div>
+                <div class="body" th:text="${#strings.abbreviate(r.document.content, 240)}">content</div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

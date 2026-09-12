@@ -73,7 +73,20 @@ class OpenApiContractTest {
 
         assertThat(doc.get("openapi").asString()).startsWith("3.1");
         assertThat(fieldNames(doc.get("paths")))
-                .containsExactlyInAnyOrder("/clients", "/clients/{clientId}/documents", "/search");
+                .containsExactlyInAnyOrder(
+                        "/clients",
+                        "/clients/{clientId}/documents",
+                        // The three spec endpoints, plus the two per-type searches the UI's
+                        // buttons call. Exact matching is deliberate: a new endpoint should
+                        // fail this test until someone decides it belongs in the contract.
+                        "/search",
+                        "/search/clients",
+                        "/search/documents");
+
+        // The UI's HTML fragment endpoints must NOT appear — the document describes the API,
+        // and /ui/** returns markup.
+        assertThat(fieldNames(doc.get("paths")))
+                .noneMatch(path -> path.startsWith("/ui"));
         assertThat(doc.at("/paths/~1clients/post/responses").propertyNames())
                 .contains("201", "400");
         assertThat(doc.at("/paths/~1search/get/responses").propertyNames())
