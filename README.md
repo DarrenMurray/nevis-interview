@@ -264,6 +264,47 @@ shell-free and signals are handled correctly.
 > detects that the daemon is unreachable and falls back to `sudo docker`. Override with
 > `make DOCKER=docker ...`.
 
+## Deployment
+
+GCP, defined in [`terraform/`](terraform/) — see [terraform/README.md](terraform/README.md)
+for the apply steps. **Not yet applied; nothing is running.**
+
+```
+merge to main ─┐
+               ├─► publish-image.yml ─► Artifact Registry ─► Pub/Sub "gcr" ─► Cloud Build ─► Cloud Run
+manual button ─┘    (:latest + :sha-)
+```
+
+- **Publishing** — [`.github/workflows/publish-image.yml`](.github/workflows/publish-image.yml)
+  builds and pushes on every merge to `main`, and on demand via **Run workflow** on the
+  Actions tab. Always tags `:latest`, plus `:sha-<short>` so a previous build can still be
+  named for rollback.
+- **Deploying** — Artifact Registry publishes to the `gcr` Pub/Sub topic on push; a
+  filtered Cloud Build trigger runs `gcloud run deploy`. Push and deploy are decoupled, so
+  an image pushed by hand rolls out like one pushed by CI.
+- **Auth** — Workload Identity Federation, scoped to this repository. No service account
+  key exists to leak.
+- **State** — remote, in a GCS bucket with versioning and lifecycle rules, so local and CI
+  runs share one state object and locking is handled by GCS. Create it once with
+  `make tf-bootstrap`; the bucket cannot be a Terraform resource because `init` needs it
+  to already exist.
+- **Infrastructure changes** — [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
+  plans on pull requests touching `terraform/**`, applies on merge to `main`, and takes a
+  manual plan-or-apply dispatch. It applies the saved plan file, so what was reviewed is
+  what runs. The first apply must be local, since the workflow's own service account is
+  created by Terraform.
+
+Worth knowing: **Cloud Run pins an image digest at deploy time**, so moving `:latest`
+alone changes nothing. The Cloud Build trigger is what makes push-to-update real.
+
+Ready for what comes next: a VPC, a reserved private-services range and service-networking
+peering are created up front, so Postgres is `enable_cloud_sql = true` rather than a
+re-architecture, and a UI can be a second Cloud Run service behind a load balancer.
+
+Cloud Run rather than Compute Engine because a GCE VM or managed instance group cannot
+redeploy itself when an image is pushed — the rollout would need driving externally
+anyway, and the VM bills whether or not traffic arrives.
+
 ## Layout
 
 ```
@@ -275,6 +316,8 @@ src/main/resources/application.yaml
 scripts/docker-smoke.sh     image boot check used by CI
 Dockerfile                  multi-stage, layered, non-root
 Makefile                    single entry point for build, test, docker
+terraform/                  GCP: Cloud Run, Artifact Registry, push-triggered deploy
+.github/workflows/          test (build + test) and publish-image (build + push)
 ```
 
 DTOs are records; validation annotations live on them. `snake_case` comes from one Jackson property

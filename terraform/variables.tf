@@ -1,0 +1,93 @@
+variable "project_id" {
+  description = "Target GCP project ID. Create a dedicated project for this stack."
+  type        = string
+}
+
+variable "region" {
+  description = "Region for Cloud Run, Artifact Registry, Cloud Build and the VPC subnet."
+  type        = string
+  default     = "europe-west2"
+}
+
+variable "service_name" {
+  description = "Cloud Run service name, also used as the container image name."
+  type        = string
+  default     = "search-api"
+}
+
+variable "github_repository" {
+  description = <<-EOT
+    The GitHub repository allowed to push images, as "owner/name". Only this repository
+    can mint tokens through Workload Identity Federation.
+  EOT
+  type        = string
+  default     = "DarrenMurray/nevis-interview"
+
+  validation {
+    condition     = can(regex("^[^/]+/[^/]+$", var.github_repository))
+    error_message = "Must be in owner/name form, e.g. DarrenMurray/nevis-interview."
+  }
+}
+
+variable "image_tag" {
+  description = <<-EOT
+    Tag the deployer watches and deploys. The publish workflow always pushes this tag,
+    so a push to it is what triggers a rollout.
+  EOT
+  type        = string
+  default     = "latest"
+}
+
+variable "deploy_on_push" {
+  description = <<-EOT
+    Redeploy Cloud Run automatically when a matching image is pushed to Artifact Registry.
+    Disable to make rollouts manual without tearing down the rest of the stack.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "enable_cloud_sql" {
+  description = <<-EOT
+    Create the Cloud SQL Postgres instance. Off by default because it bills hourly whether
+    or not anything connects. The networking it needs is created regardless, so turning
+    this on is a one-line change rather than a re-architecture.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "cloud_sql_tier" {
+  description = "Cloud SQL machine type. db-f1-micro is the cheapest usable option."
+  type        = string
+  default     = "db-f1-micro"
+}
+
+variable "min_instances" {
+  description = "Cloud Run minimum instances. 0 scales to zero; raise to avoid cold starts."
+  type        = number
+  default     = 0
+}
+
+variable "state_bucket" {
+  description = <<-EOT
+    GCS bucket holding Terraform state. Only used to grant the CI Terraform identity
+    access to it — the backend block cannot read variables, so the bucket name is also
+    hardcoded in versions.tf. Defaults to "<project_id>-tfstate", matching
+    scripts/bootstrap-tfstate.sh.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "initial_image" {
+  description = <<-EOT
+    Image the service is first created with. Cloud Run validates that an image is
+    pullable at deploy time, and on the very first apply the registry this config creates
+    is still empty — pointing at our own :latest would fail the apply. Google's public
+    hello container stands in until the first real push, after which the push-triggered
+    deployer replaces it and `ignore_changes` keeps Terraform from reverting it.
+  EOT
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
