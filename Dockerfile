@@ -71,6 +71,6 @@ ENV SPRING_AI_EMBEDDING_TRANSFORMER_ONNX_MODEL_URI=file:/app/onnx/model.onnx \
 USER app
 EXPOSE 8080
 
-# JVM flags go in JAVA_TOOL_OPTIONS, which the JVM reads itself — exec form, no shell, so
+# JVM flags go in JAVA_TOOL_OPTIONS, which the JVM reads itself - exec form, no shell, so
 # signals are handled correctly.
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]

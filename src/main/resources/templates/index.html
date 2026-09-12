@@ -42,15 +42,15 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 0 16px 64px;
+            padding: 0 16px 48px;
         }
 
         .hero {
             width: 100%;
             max-width: 620px;
-            /* min-height + centring keeps the box mid-screen when empty, but lets the page
-               grow naturally once results arrive rather than trapping them below the fold. */
-            min-height: 48vh;
+            /* Centres the box on an empty page. Collapsed by the :has() rule below as soon
+               as results exist, so there is no dead space above them. */
+            min-height: 42vh;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -102,7 +102,16 @@
 
         .hint { color: var(--muted); font-size: .8125rem; text-align: center; }
 
-        #results { width: 100%; max-width: 620px; }
+        /* Once #results has content the hero stops reserving vertical space, which removes the
+           gap between the buttons and the first result. */
+        body:has(#results:not(:empty)) .hero {
+            min-height: auto;
+            padding-top: 28px;
+            gap: 14px;
+        }
+        body:has(#results:not(:empty)) .hint { display: none; }
+
+        #results { width: 100%; max-width: 620px; margin-top: 4px; }
 
         /* htmx toggles this class on the element named by hx-indicator while a request
            is in flight. */

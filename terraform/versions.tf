@@ -15,7 +15,7 @@ terraform {
   # Shared state so local and CI runs agree. GCS locks natively via object generations.
   # Hardcoded rather than -backend-config: backends cannot take variables, and a committed
   # value stops a laptop and a workflow diverging.
-  # The bucket must exist before `terraform init` — see `make tf-bootstrap`.
+  # The bucket must exist before `terraform init` - see `make tf-bootstrap`.
   backend "gcs" {
     bucket = "interview-prep-505511-tfstate"
     prefix = "search-api"

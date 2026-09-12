@@ -35,14 +35,14 @@ public class SearchController {
                     highest score first. Each item is tagged with a `type` so the two are \
                     distinguishable.
 
-                    Clients match lexically — `NevisWealth` finds `john.doe@neviswealth.com`. \
-                    Documents match semantically — `address proof` finds a document containing \
+                    Clients match lexically - `NevisWealth` finds `john.doe@neviswealth.com`. \
+                    Documents match semantically - `address proof` finds a document containing \
                     *"utility bill"*, despite sharing no words with the query.
 
                     **Currently stubbed: always returns an empty array.**""")
     @ApiResponses({
             @ApiResponse(responseCode = "200",
-                    description = "Ranked hits. An empty array means nothing matched — that is a "
+                    description = "Ranked hits. An empty array means nothing matched - that is a "
                             + "valid result, so this endpoint never returns 404.",
                     content = @Content(array = @ArraySchema(
                             schema = @Schema(implementation = SearchResultResponse.class)))),

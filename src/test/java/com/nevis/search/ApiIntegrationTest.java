@@ -122,7 +122,7 @@ class ApiIntegrationTest {
                 {"first_name":"Marisol","last_name":"Quintero","email":"%s"}
                 """.formatted(uniqueEmail())).body()).get("id").asString();
 
-        // Deliberately shares no word with the query below — not "utility", not "bill" — so a
+        // Deliberately shares no word with the query below - not "utility", not "bill" - so a
         // match can only come from the embedding.
         assertThat(post("/clients/" + clientId + "/documents", """
                 {"title":"Scottish Power Statement",

@@ -47,7 +47,7 @@ for i in $(seq 1 "$TIMEOUT"); do
         rows="$($DOCKER compose exec -T db psql -U search_api -d search -tAc \
             "SELECT count(*) FROM clients" 2>/dev/null | tr -d '[:space:]')"
         if [ "${rows:-0}" -lt 1 ]; then
-            echo "FAIL: no seed data — V2__seed.sql did not apply" >&2
+            echo "FAIL: no seed data - V2__seed.sql did not apply" >&2
             exit 1
         fi
         echo "PASS: schema migrated and seeded (${rows} clients)"

@@ -1,4 +1,4 @@
-# Build output and local tooling — never needed inside the image context.
+# Build output and local tooling - never needed inside the image context.
 target/
 .git/
 .gitignore

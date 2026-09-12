@@ -22,9 +22,9 @@ import org.springframework.context.annotation.Configuration;
 
                         Two query styles are supported, because they need different machinery:
 
-                        * **Clients — lexical.** `?q=NevisWealth` matches the client whose email is \
+                        * **Clients - lexical.** `?q=NevisWealth` matches the client whose email is \
                         `john.doe@neviswealth.com`, by case-insensitive substring.
-                        * **Documents — semantic.** `?q=address proof` matches a document containing \
+                        * **Documents - semantic.** `?q=address proof` matches a document containing \
                         *"utility bill"*. Those phrases share no characters, so this is vector \
                         similarity over embeddings, not keyword matching.
 
@@ -44,7 +44,7 @@ public class OpenApiConfig {
      * Generates snake_case schema names.
      *
      * <p>Boot 4 serialises with Jackson 3, but swagger-core builds schemas with its own Jackson 2
-     * mapper and cannot see {@code spring.jackson.property-naming-strategy} — without this the
+     * mapper and cannot see {@code spring.jackson.property-naming-strategy} - without this the
      * document says {@code firstName} while the API returns {@code first_name}.
      *
      * <p>Must match {@code application.yaml}; {@code OpenApiContractTest} fails if they diverge.

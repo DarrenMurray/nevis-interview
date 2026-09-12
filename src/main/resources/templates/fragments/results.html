@@ -14,12 +14,55 @@
         }
         .card h3 { margin: 0 0 4px; font-size: 1rem; font-weight: 600; }
         .card .meta { color: var(--muted); font-size: .8125rem; }
-        .card .body { margin-top: 8px; font-size: .9375rem; }
+        .card .body { margin-top: 10px; font-size: .9375rem; white-space: pre-line; }
         .badge {
             display: inline-block; padding: 1px 8px; border-radius: 999px;
             border: 1px solid var(--line); font-size: .75rem; color: var(--muted);
         }
         .empty { color: var(--muted); text-align: center; padding: 20px 0; }
+        .overview {
+            border: 1px solid var(--line);
+            border-left: 3px solid var(--accent);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 14px;
+            background: var(--panel);
+            font-size: .9375rem;
+        }
+        .overview .label {
+            display: block;
+            font-size: .6875rem;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+        .card .summary {
+            margin-top: 10px;
+            padding: 8px 10px;
+            border-left: 3px solid var(--accent);
+            border-radius: 0 6px 6px 0;
+            background: color-mix(in srgb, var(--accent) 7%, transparent);
+            font-size: .875rem;
+        }
+        .card .summary .label {
+            display: block;
+            font-weight: 600;
+            font-size: .6875rem;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 3px;
+        }
+        .card .body .label {
+            display: block;
+            font-weight: 600;
+            font-size: .6875rem;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 3px;
+        }
         .empty code { font-size: .875rem; }
     </style>
 
@@ -28,6 +71,12 @@
     </p>
 
     <div th:unless="${blank}">
+        <!-- One line describing the whole result set, from the centroid of the top hits. -->
+        <div class="overview" th:if="${overview != null}">
+            <span class="label">About these results</span>
+            <span th:text="${overview}">overview</span>
+        </div>
+
         <p class="summary">
             <span th:text="${#lists.size(results)}">0</span>
             <span th:text="${kind == 'clients'} ? 'client match(es)' : 'document match(es)'">matches</span>
@@ -58,7 +107,16 @@
                 <div class="meta">
                     client <span th:text="${r.document.clientId}">id</span>
                 </div>
-                <div class="body" th:text="${#strings.abbreviate(r.document.content, 240)}">content</div>
+                <!-- The document's own summary, generated on write. Falls back to the opening
+                     of the content if a document has not been summarised yet. -->
+                <div class="summary" th:if="${r.document.summary != null}">
+                    <span class="label">Document summary</span>
+                    <span th:text="${r.document.summary}">summary</span>
+                </div>
+                <div class="body">
+                    <span class="label">Document text</span>
+                    <span th:text="${r.document.content}">content</span>
+                </div>
             </div>
         </div>
     </div>

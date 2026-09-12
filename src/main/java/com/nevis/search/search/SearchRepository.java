@@ -26,7 +26,7 @@ public class SearchRepository {
      *
      * <p>Two predicates because they catch different things: ILIKE finds a fragment anywhere,
      * including inside an email ("neviswealth" in "john.doe@neviswealth.com", which full-text
-     * cannot do — the parser treats the whole address as one token). Full-text then adds
+     * cannot do - the parser treats the whole address as one token). Full-text then adds
      * stemming over the prose fields, so "pensions" finds "pension".
      *
      * <p>Ranked by word_similarity rather than similarity: the latter normalises over the whole
@@ -60,12 +60,12 @@ public class SearchRepository {
     /**
      * Documents matching {@code query} lexically, best first.
      *
-     * <p>The exact-terms half of document search — an account number, a reference code. Meaning
+     * <p>The exact-terms half of document search - an account number, a reference code. Meaning
      * is handled separately by {@link #findDocumentsSemantic}.
      */
     public List<Scored<DocumentResponse>> findDocumentsLexical(String query, int limit) {
         String sql = """
-                SELECT id, client_id, title, content, created_at,
+                SELECT id, client_id, title, summary, content, created_at,
                        GREATEST(
                            word_similarity(:q, title),
                            word_similarity(:q, content),
@@ -95,17 +95,17 @@ public class SearchRepository {
      * one sentence establishing residence is decisive, but barely registers in the average of a
      * page of account numbers.
      *
-     * <p>{@code maxDistance} matters — every vector has some distance to every other, so
+     * <p>{@code maxDistance} matters - every vector has some distance to every other, so
      * without a cutoff there is no such thing as "no result".
      */
     public List<Scored<DocumentResponse>> findDocumentsSemantic(
             String queryVector, int limit, double maxDistance) {
         String sql = """
-                SELECT d.id, d.client_id, d.title, d.content, d.created_at,
+                SELECT d.id, d.client_id, d.title, d.summary, d.content, d.created_at,
                        1 - min(c.embedding <=> CAST(:vec AS vector)) AS score
                 FROM documents d
                 JOIN document_chunks c ON c.document_id = d.id
-                GROUP BY d.id, d.client_id, d.title, d.content, d.created_at
+                GROUP BY d.id, d.client_id, d.title, d.summary, d.content, d.created_at
                 HAVING min(c.embedding <=> CAST(:vec AS vector)) <= :maxDistance
                 ORDER BY score DESC
                 LIMIT :limit
@@ -142,7 +142,7 @@ public class SearchRepository {
     /**
      * Documents needing embedding: no document vector, or no passages.
      *
-     * <p>The chunk check matters when passages are introduced after documents already exist —
+     * <p>The chunk check matters when passages are introduced after documents already exist -
      * their document vector is set, so an embedding-only check would skip them and the semantic
      * search would silently have nothing to rank.
      */
@@ -161,6 +161,13 @@ public class SearchRepository {
                 .list();
     }
 
+    public void updateSummary(String id, String summary) {
+        jdbc.sql("UPDATE documents SET summary = :summary WHERE id = CAST(:id AS uuid)")
+                .param("summary", summary)
+                .param("id", id)
+                .update();
+    }
+
     public void updateEmbedding(String id, String vector) {
         jdbc.sql("UPDATE documents SET embedding = CAST(:vec AS vector) WHERE id = CAST(:id AS uuid)")
                 .param("vec", vector)
@@ -169,7 +176,7 @@ public class SearchRepository {
     }
 
     /**
-     * Escapes LIKE wildcards. Values are bound, so injection is not the concern — but an
+     * Escapes LIKE wildcards. Values are bound, so injection is not the concern - but an
      * unescaped % or _ in a user's query would silently act as a wildcard.
      */
     private static String escapeLike(String query) {
@@ -191,6 +198,7 @@ public class SearchRepository {
                 rs.getString("id"),
                 rs.getString("client_id"),
                 rs.getString("title"),
+                rs.getString("summary"),
                 rs.getString("content"),
                 rs.getObject("created_at", OffsetDateTime.class));
     }

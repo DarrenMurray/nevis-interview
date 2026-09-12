@@ -3,7 +3,7 @@
 #
 # This cannot be a Terraform resource: the backend must already exist when
 # `terraform init` runs, so the config that uses the bucket cannot also create it.
-# Running it twice is safe — an existing bucket is left alone and its settings re-applied.
+# Running it twice is safe - an existing bucket is left alone and its settings re-applied.
 set -euo pipefail
 
 PROJECT="${1:-}"
@@ -23,7 +23,7 @@ echo "Location: $LOCATION"
 echo
 
 if gcloud storage buckets describe "gs://$BUCKET" --project "$PROJECT" >/dev/null 2>&1; then
-    echo "Bucket already exists — re-applying settings."
+    echo "Bucket already exists - re-applying settings."
 else
     # Uniform bucket-level access: ACLs and IAM disagreeing about who can read state is a
     # bad way to find out your state was world-readable.

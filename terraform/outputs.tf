@@ -14,8 +14,8 @@ output "registry" {
 }
 
 # --- Values the GitHub Actions workflow needs -------------------------------------
-# Set these as repository secrets. Strictly none is sensitive — federation means there is
-# no key to hide — but keeping them in one place beats splitting across secrets and
+# Set these as repository secrets. Strictly none is sensitive - federation means there is
+# no key to hide - but keeping them in one place beats splitting across secrets and
 # variables, and it keeps them out of logs by default.
 
 output "gha_workload_identity_provider" {
@@ -24,12 +24,12 @@ output "gha_workload_identity_provider" {
 }
 
 output "gha_service_account" {
-  description = "GitHub secret GCP_SERVICE_ACCOUNT — used by publish-image"
+  description = "GitHub secret GCP_SERVICE_ACCOUNT - used by publish-image"
   value       = google_service_account.github_publisher.email
 }
 
 output "gha_terraform_service_account" {
-  description = "GitHub secret GCP_TERRAFORM_SERVICE_ACCOUNT — used by deploy"
+  description = "GitHub secret GCP_TERRAFORM_SERVICE_ACCOUNT - used by deploy"
   value       = google_service_account.terraform_ci.email
 }
 
@@ -46,4 +46,14 @@ output "gha_region" {
 output "database_host" {
   description = "Private IP of the Postgres instance, or null while enable_cloud_sql is false."
   value       = var.enable_cloud_sql ? google_sql_database_instance.postgres[0].private_ip_address : null
+}
+
+output "alerting" {
+  description = "Whether traffic and error alerts were created, and where they notify."
+  value       = var.alert_email == "" ? "disabled (set TF_VAR_alert_email to enable)" : "enabled, notifying ${var.alert_email}"
+}
+
+output "logs_url" {
+  description = "Logs Explorer, filtered to this service."
+  value       = "https://console.cloud.google.com/logs/query;query=resource.labels.service_name%3D%22${var.service_name}%22?project=${var.project_id}"
 }

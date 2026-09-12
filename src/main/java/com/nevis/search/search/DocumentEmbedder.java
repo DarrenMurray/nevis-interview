@@ -3,6 +3,7 @@ package com.nevis.search.search;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -27,19 +28,27 @@ public class DocumentEmbedder {
     /** Split after . ! or ? followed by whitespace. */
     private static final Pattern SENTENCE_END = Pattern.compile("(?<=[.!?])\\s+");
 
-    /** Roughly two or three sentences — enough context without diluting the passage. */
+    /** Roughly two or three sentences - enough context without diluting the passage. */
     private static final int MAX_CHUNK_CHARS = 260;
+
+    /** Sentences kept in a per-document summary. */
+    private static final int SUMMARY_SENTENCES = 2;
 
     private final EmbeddingModel model;
     private final SearchRepository repository;
     private final boolean backfillEnabled;
+    private final ObjectProvider<Summariser> summariser;
 
     DocumentEmbedder(EmbeddingModel model,
                      SearchRepository repository,
-                     @Value("${search.embedding.backfill:true}") boolean backfillEnabled) {
+                     @Value("${search.embedding.backfill:true}") boolean backfillEnabled,
+                     // Lazy: Summariser depends on this class, so injecting it directly would
+                     // be a constructor cycle.
+                     ObjectProvider<Summariser> summariser) {
         this.model = model;
         this.repository = repository;
         this.backfillEnabled = backfillEnabled;
+        this.summariser = summariser;
     }
 
     /** Embeds text for storage or for querying. Both sides must use the same model. */
@@ -87,12 +96,17 @@ public class DocumentEmbedder {
         return joiner.toString();
     }
 
-    /** Embeds one document and its passages. Used on write and by the backfill. */
-    public void embed(com.nevis.search.dto.DocumentResponse document) {
-        embedOne(document.id(), document.title(), document.content());
+    /**
+     * Embeds one document and its passages, and returns the summary generated for it.
+     *
+     * <p>The caller needs the summary back because the row is inserted before it exists, so the
+     * response built from that insert would otherwise omit the field the schema promises.
+     */
+    public String embed(com.nevis.search.dto.DocumentResponse document) {
+        return embedOne(document.id(), document.title(), document.content());
     }
 
-    private void embedOne(String id, String title, String content) {
+    private String embedOne(String id, String title, String content) {
         repository.updateEmbedding(id, toVectorLiteral(embed(title + "\n" + content)));
 
         List<String> passages = new ArrayList<>();
@@ -102,6 +116,11 @@ public class DocumentEmbedder {
         repository.replaceChunks(id, passages.stream()
                 .map(passage -> new SearchRepository.Chunk(passage, toVectorLiteral(embed(passage))))
                 .toList());
+
+        // Query-independent, so it is computed once on write rather than per search.
+        String summary = summariser.getObject().summarise(content, SUMMARY_SENTENCES);
+        repository.updateSummary(id, summary);
+        return summary;
     }
 
     /**

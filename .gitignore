@@ -60,7 +60,7 @@ build/
 # --- Terraform ---
 # Providers are NOT vendored here. They live in the global plugin cache
 # (~/.terraform.d/plugin-cache, configured via plugin_cache_dir in ~/.terraformrc), so
-# .terraform/ holds only symlinks and local metadata — 40K instead of 145M per project.
+# .terraform/ holds only symlinks and local metadata - 40K instead of 145M per project.
 .terraform/
 
 # .terraform.lock.hcl is deliberately NOT ignored: it pins provider versions and hashes

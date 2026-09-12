@@ -5,9 +5,9 @@
 Take-home assignment for Nevis: a **Search API across clients and their documents** for a
 WealthTech advisor platform. Two search behaviours define the assignment:
 
-1. **Clients — lexical.** `?q=NevisWealth` must return the client with email
+1. **Clients - lexical.** `?q=NevisWealth` must return the client with email
    `john.doe@neviswealth.com` (case-insensitive substring over email/name/description).
-2. **Documents — semantic.** `?q=address proof` must return a document containing `"utility bill"`.
+2. **Documents - semantic.** `?q=address proof` must return a document containing `"utility bill"`.
    These share no characters, so keyword matching cannot do it; this needs embeddings.
 
 **Hard constraint: no external LLM/embedding API.** No Anthropic, OpenAI or Voyage; no API keys.
@@ -23,7 +23,7 @@ hold no state and implement no search. `GET /search` always returns `[]`.
 |---|---|
 | `POST /clients`, `POST /clients/{id}/documents`, `GET /search` | stubbed, validated |
 | OpenAPI 3.1 + Swagger UI (annotation-driven, springdoc) | done |
-| Dockerfile (multi-stage, layered, non-root) | done, **never actually built** — see Toolchain |
+| Dockerfile (multi-stage, layered, non-root) | done, **never actually built** - see Toolchain |
 | Makefile, GitHub Actions (`test` workflow) | done |
 | Tests | smoke test + 6 OpenAPI contract tests |
 | GCP infra as Terraform: Cloud Run, Artifact Registry, push-triggered deploy, VPC | written, **never applied** |
@@ -32,7 +32,7 @@ hold no state and implement no search. `GET /search` always returns `[]`.
 
 ## Commands
 
-Prefer `make` — it pins the right JDK and fails with a clear message if it cannot find one. `make`
+Prefer `make` - it pins the right JDK and fails with a clear message if it cannot find one. `make`
 with no target runs the tests.
 
 ```sh
@@ -51,15 +51,15 @@ Raw Maven works too, but `JAVA_HOME` must be set explicitly:
 JAVA_HOME=~/.jdks/current ./mvnw test
 ```
 
-Override the JDK with `make JDK=/path/to/jdk-25 ...`. The variable is `JDK`, **not** `JAVA_HOME` —
+Override the JDK with `make JDK=/path/to/jdk-25 ...`. The variable is `JDK`, **not** `JAVA_HOME` -
 an inherited `JAVA_HOME` would silently win over `?=` and break the build.
 
 ## API documentation
 
 Annotation-driven via springdoc; there is no hand-maintained spec file to keep in sync.
 
-- `GET /v3/api-docs` — OpenAPI **3.1** JSON (`.yaml` also served)
-- `GET /swagger-ui.html` — Swagger UI
+- `GET /v3/api-docs` - OpenAPI **3.1** JSON (`.yaml` also served)
+- `GET /swagger-ui.html` - Swagger UI
 
 Metadata (title, description, tags, servers) lives on `config/OpenApiConfig`. Per-endpoint docs are
 `@Operation` / `@ApiResponses` on the controllers; field docs and examples are `@Schema` on the DTO
@@ -69,14 +69,14 @@ rather than `ClientResponse` / `DocumentResponse`.
 ## Toolchain
 
 Java 25 (Temurin 25.0.4.1) at `~/.jdks/jdk-25.0.4.1+1`, symlinked `~/.jdks/current`.
-**Not on `PATH`** — `java` still resolves to JDK 17, so `JAVA_HOME` must be set for any direct
+**Not on `PATH`** - `java` still resolves to JDK 17, so `JAVA_HOME` must be set for any direct
 Maven invocation. (`~/.jdks/ms-25.0.4.1`, a Microsoft build, predates this and is unused.)
 
-`mvn` is not installed — always use the committed wrapper `./mvnw`.
+`mvn` is not installed - always use the committed wrapper `./mvnw`.
 
 **Docker cannot be run from this session.** The daemon socket is root-owned with no `docker` group,
 so Docker needs `sudo`, and sudo requires a password. The Makefile detects this and falls back to
-`sudo docker` (visible in `make help`). Consequence: the Dockerfile has **never been built** —
+`sudo docker` (visible in `make help`). Consequence: the Dockerfile has **never been built** -
 every step was instead validated on the host (`dependency:go-offline`, `package`, `jarmode=tools
 extract --layers`, then booting the flattened layer layout, which served HTTP 200). CI is what will
 first prove the container itself. To verify locally, the user must run `make ci` in their own shell.
@@ -85,7 +85,7 @@ first prove the container itself. To verify locally, the user must run `make ci`
 
 ## Deployment
 
-Terraform in `terraform/` (see `terraform/README.md`). **Never applied — nothing is
+Terraform in `terraform/` (see `terraform/README.md`). **Never applied - nothing is
 running and no GCP cost has been incurred.** `terraform validate` passes against
 `hashicorp/google ~> 8.2`; that is schema validation, not a plan against a real project.
 
@@ -123,10 +123,10 @@ Facts that shaped this, worth not rediscovering:
   layer: the Makefile re-exports them, `set -a; . ./.env; set +a` makes bare `terraform`
   work, and CI sets the same names from secrets. Exported only when non-empty (an exported
   empty `TF_VAR_region` would override the default with `""`). **Do not add a
-  `terraform.tfvars`** — it takes precedence over `TF_VAR_*` and would silently beat
+  `terraform.tfvars`** - it takes precedence over `TF_VAR_*` and would silently beat
   `.env`. `make tf-config` prints what Terraform will actually use.
 - **Bare `terraform plan` prompting for `project_id` means the shell lacks the vars**, not
-  that the config is broken — source `.env` or use `make tf-plan`.
+  that the config is broken - source `.env` or use `make tf-plan`.
 - **A killed plan/apply can leave the GCS state lock held.** Symptom is
   `Error acquiring the state lock ... 412 conditionNotMet` naming
   `search-api/default.tflock`. Fix: `terraform force-unlock <ID>`, or delete that object
@@ -137,40 +137,40 @@ Facts that shaped this, worth not rediscovering:
   `could not find default credentials`. Switching `gcloud config set account` does not
   change what Terraform uses.
 - **State is remote, in GCS** (`backend "gcs"` in `terraform/versions.tf`), so local and CI
-  runs share one state object. GCS locks natively via object generations — no lock table.
+  runs share one state object. GCS locks natively via object generations - no lock table.
   The bucket name is a committed literal because backends cannot take variables and a
   per-machine `backend.hcl` would let the two diverge silently.
 - **The state bucket is created by `scripts/bootstrap-tfstate.sh`** (`make tf-bootstrap
-  GCP_PROJECT=...`), not by Terraform — `init` needs the backend to exist first, so the
+  GCP_PROJECT=...`), not by Terraform - `init` needs the backend to exist first, so the
   config that uses the bucket cannot create it. It ships with the placeholder
   `REPLACE_ME-tfstate`, so `tf-init` fails until the real name is set.
 - **Use `make tf-validate`, not `terraform validate`, before the bucket exists.** It runs
   `init -backend=false` first, so it needs neither the bucket nor credentials.
-- **`terraform` is not installed system-wide** — it is at `~/.local/bin/terraform` (1.16.2).
+- **`terraform` is not installed system-wide** - it is at `~/.local/bin/terraform` (1.16.2).
   The Makefile's `check-tf` guard reports this rather than failing cryptically.
 - **No workflow runs Terraform yet.** Shared state is in place, but a CI Terraform identity
   (objectAdmin on the state bucket plus near-editor on the project) is deliberately not
-  created — `github-publisher` cannot touch state.
+  created - `github-publisher` cannot touch state.
 
 ## GitHub Actions
 
 Three workflows:
 
-- `test.yml` — tests + docker build + image smoke test, on push/PR.
-- `publish-image.yml` — builds and pushes to Artifact Registry on merge to `main` and on
+- `test.yml` - tests + docker build + image smoke test, on push/PR.
+- `publish-image.yml` - builds and pushes to Artifact Registry on merge to `main` and on
   manual dispatch. Tags `:latest` (what the deployer watches) and `:sha-<short>` (so a
   rollback target can be named).
-- `deploy.yml` — runs Terraform against the shared GCS state: `plan` on PRs touching
+- `deploy.yml` - runs Terraform against the shared GCS state: `plan` on PRs touching
   `terraform/**`, `apply` on merge to `main`, plan-or-apply on dispatch. Applies the
   **saved plan file**, so what was reviewed is what runs. Concurrency group
-  `terraform-state` with cancellation disabled — cancelling mid-apply would leave the
+  `terraform-state` with cancellation disabled - cancelling mid-apply would leave the
   state lock held.
 
 All auth is Workload Identity Federation. `id-token: write` is required in every job that
 authenticates, or the token cannot be minted.
 
 **The first `terraform apply` must be local.** `deploy.yml` authenticates as the
-`terraform-ci` service account, which the config itself creates — it cannot exist before
+`terraform-ci` service account, which the config itself creates - it cannot exist before
 Terraform has run once.
 
 ### Secrets
@@ -180,8 +180,8 @@ to secrets so there is one place to look):
 
 | Secret | Used by |
 |---|---|
-| `GCP_PROJECT_ID` | both — exported as `TF_VAR_project_id` |
-| `GCP_REGION` | both — exported as `TF_VAR_region` |
+| `GCP_PROJECT_ID` | both - exported as `TF_VAR_project_id` |
+| `GCP_REGION` | both - exported as `TF_VAR_region` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | both |
 | `GCP_SERVICE_ACCOUNT` | `publish-image` (the publisher identity) |
 | `GCP_TERRAFORM_SERVICE_ACCOUNT` | `deploy` (the terraform-ci identity) |
@@ -199,7 +199,7 @@ have skipped `:latest` on every merge to main and never deployed. Both `publish-
 
 ## Version gotchas
 
-These cost real debugging time — do not "fix" them back:
+These cost real debugging time - do not "fix" them back:
 
 - **Spring Boot 4.1.1**, not `4.1.1.RELEASE`. Spring Initializr reports the version id with a
   `.RELEASE` suffix, but no such artifact exists in Maven Central; the parent POM fails to resolve.
@@ -207,7 +207,7 @@ These cost real debugging time — do not "fix" them back:
   starters are `spring-boot-starter-webmvc-test` / `spring-boot-starter-validation-test`.
 - **springdoc 3.x is required** (currently 3.1.1). The 2.x line targets Boot 3 / Jackson 2.
 - **Boot 4 ships Jackson 3** (`tools.jackson.*`). `SerializationFeature.WRITE_DATES_AS_TIMESTAMPS`
-  no longer exists — setting `spring.jackson.serialization.write-dates-as-timestamps` fails context
+  no longer exists - setting `spring.jackson.serialization.write-dates-as-timestamps` fails context
   startup with `No enum constant`. Unnecessary anyway: Jackson 3 writes ISO-8601 by default.
 - **Two Jacksons are on the classpath.** Boot 4 serialises with Jackson 3 (`jackson-databind:3.x`,
   package `tools.jackson`), while swagger-core bundles Jackson 2 (`jackson-databind:2.x`, package
@@ -217,7 +217,7 @@ These cost real debugging time — do not "fix" them back:
   `spring.jackson.property-naming-strategy`, so the document advertised `firstName` while the API
   served `first_name`. Fixed by the `ModelResolver` bean in `config/OpenApiConfig`, which hands
   swagger-core a Jackson 2 mapper configured `SNAKE_CASE`. That bean must stay in step with
-  `application.yaml`; `OpenApiContractTest` fails if they diverge (verified — removing the bean
+  `application.yaml`; `OpenApiContractTest` fails if they diverge (verified - removing the bean
   fails 4 tests).
 - **Do not put `@Validated` on a controller class** to validate `@RequestParam`. It routes through
   the legacy `ConstraintViolationException` path and yields **500**; Spring 7's built-in method
@@ -227,16 +227,16 @@ These cost real debugging time — do not "fix" them back:
 
 ## Conventions
 
-- Packages: `controllers/` (HTTP layer — not `web/`), `dto/` (request/response records),
+- Packages: `controllers/` (HTTP layer - not `web/`), `dto/` (request/response records),
   `config/` (Spring configuration).
 - DTOs are **records**; validation and `@Schema` annotations live on them.
 - JSON is **snake_case** via `spring.jackson.property-naming-strategy`; Java fields stay camelCase.
   Do not hand-write `@JsonProperty` for this.
-- `POST` returns 201 + `Location`. `GET /search` returns `200` with an array — **empty array, not
+- `POST` returns 201 + `Location`. `GET /search` returns `200` with an array - **empty array, not
   404**, when nothing matches.
 - `/search` items are a tagged union (`type: "client" | "document"`, plus `score`), since the spec
   leaves items as a bare object and invites extending responses.
 - Documented behaviour must match served behaviour. `OpenApiContractTest` compares the OpenAPI
-  schemas against real response bodies — populate every optional field when adding cases there, or
+  schemas against real response bodies - populate every optional field when adding cases there, or
   `default-property-inclusion: non_null` drops nulls and the comparison silently passes.
 - `main` is the default branch and the base for PRs. Nothing is committed yet.
