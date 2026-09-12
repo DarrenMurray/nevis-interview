@@ -1,0 +1,9 @@
+# Testcontainers supplies the datasource via @ServiceConnection, and migrations must run so
+# the schema and seed data exist. Both undo the defaults in application.yaml, which keep the
+# other tests database-free.
+spring:
+  flyway:
+    enabled: true
+  datasource:
+    hikari:
+      initialization-fail-timeout: 1

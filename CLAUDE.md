@@ -28,7 +28,7 @@ hold no state and implement no search. `GET /search` always returns `[]`.
 | Tests | smoke test + 6 OpenAPI contract tests |
 | GCP infra as Terraform: Cloud Run, Artifact Registry, push-triggered deploy, VPC | written, **never applied** |
 | `publish-image` workflow: build + push on merge to main, plus manual dispatch | done |
-| Persistence, search logic, embeddings, docker-compose, seed data, UI | not started |
+| Persistence, search logic, embeddings | not started |
 
 ## Commands
 

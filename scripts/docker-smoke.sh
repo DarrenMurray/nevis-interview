@@ -42,7 +42,15 @@ for i in $(seq 1 "$TIMEOUT"); do
             echo "FAIL: expected clients and documents tables, found ${tables:-none}" >&2
             exit 1
         fi
-        echo "PASS: schema migrated (clients, documents)"
+
+        # Seed data is a migration, so an empty table means V2 did not run.
+        rows="$($DOCKER compose exec -T db psql -U search_api -d search -tAc \
+            "SELECT count(*) FROM clients" 2>/dev/null | tr -d '[:space:]')"
+        if [ "${rows:-0}" -lt 1 ]; then
+            echo "FAIL: no seed data — V2__seed.sql did not apply" >&2
+            exit 1
+        fi
+        echo "PASS: schema migrated and seeded (${rows} clients)"
         exit 0
     fi
     if [ "$($DOCKER compose ps -q api | wc -l)" -eq 0 ]; then
