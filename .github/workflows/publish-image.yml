@@ -1,0 +1,99 @@
+name: publish-image
+
+# Pushes the container image to Artifact Registry. Two ways in:
+#   - automatically, when a change lands on main (a merged PR counts as a push)
+#   - manually, via the "Run workflow" button on the Actions tab
+#
+# The image is always tagged :latest, which is the tag the Cloud Build trigger watches,
+# so a successful run here rolls the Cloud Run service forward on its own.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag_latest:
+        description: "Also move the :latest tag (uncheck to publish only the sha- tag, without deploying)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  # Required for Workload Identity Federation: lets the job mint a GitHub OIDC token.
+  # Without it authentication fails with a missing-token error.
+  id-token: write
+
+# Never let two publishes race to move :latest. Not cancel-in-progress: a half-finished
+# push should be allowed to complete rather than leave the tag dangling.
+concurrency:
+  group: publish-image
+  cancel-in-progress: false
+
+env:
+  SERVICE: search-api
+
+jobs:
+  publish:
+    name: build and push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          # Keyless: GitHub's OIDC token is exchanged for a short-lived GCP token, so
+          # there is no service-account key stored anywhere. Values come from repository
+          # secrets, the same names the deploy workflow uses.
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Work out the tags
+        id: tags
+        run: |
+          set -euo pipefail
+          repo="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/containers/${SERVICE}"
+          # A sha tag costs nothing and is the difference between being able to roll back
+          # and not: :latest alone cannot name a previous build.
+          tags="${repo}:sha-${GITHUB_SHA::12}"
+
+          # Decided in shell, not in a GitHub expression. On a push event
+          # inputs.tag_latest is empty, and `== false` coerces both sides to numbers, so
+          # '' == false is TRUE — an expression here would silently skip :latest on
+          # merges to main and never deploy. Only an explicit dispatch opts out.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && [ "${{ inputs.tag_latest }}" = "false" ]; then
+            echo "Dispatched with tag_latest=false: publishing the sha tag only, no deploy."
+          else
+            tags="${tags},${repo}:latest"
+          fi
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "Tags: ${tags}"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          provenance: false
+          # Cache layers in the registry so dependency resolution is not repeated on
+          # every run.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published"
+            echo
+            echo '```'
+            echo "${{ steps.tags.outputs.tags }}" | tr ',' '\n'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

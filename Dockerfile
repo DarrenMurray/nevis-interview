@@ -9,14 +9,16 @@ WORKDIR /build
 # not on every source edit.
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-RUN ./mvnw -B -q dependency:go-offline
+RUN ./mvnw -B dependency:go-offline
 
 COPY src/ src/
-RUN ./mvnw -B -q clean package -DskipTests
+RUN ./mvnw -B clean package -DskipTests
 
 # Split the fat jar into layers that change at different rates (dependencies rarely,
 # application code constantly) so image pulls only transfer what actually changed.
-RUN java -Djarmode=tools -jar target/search-api-*.jar extract --layers --destination extracted
+# --launcher is required: without it this produces a thin jar plus a bare dependencies/lib
+# and an EMPTY spring-boot-loader/, so the JarLauncher entrypoint below cannot resolve.
+RUN java -Djarmode=tools -jar target/search-api-*.jar extract --layers --launcher --destination extracted
 
 # ---------- runtime ----------
 FROM eclipse-temurin:25-jre-noble AS runtime

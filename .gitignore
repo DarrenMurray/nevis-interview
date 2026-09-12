@@ -56,3 +56,33 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# --- Terraform ---
+# Providers are NOT vendored here. They live in the global plugin cache
+# (~/.terraform.d/plugin-cache, configured via plugin_cache_dir in ~/.terraformrc), so
+# .terraform/ holds only symlinks and local metadata — 40K instead of 145M per project.
+.terraform/
+
+# .terraform.lock.hcl is deliberately NOT ignored: it pins provider versions and hashes
+# so every machine and CI run resolves identically.
+
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# State and real tfvars can contain generated passwords.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# --- Local environment ---
+# .env holds machine-local values; .env.example is the committed template.
+.env
+.env.*
+!.env.example

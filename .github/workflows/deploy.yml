@@ -1,0 +1,151 @@
+name: deploy
+
+# Runs Terraform against the shared GCS state.
+#
+#   pull request touching terraform/  -> plan only, posted to the run summary
+#   merge to main touching terraform/ -> apply
+#   manual dispatch                   -> plan or apply, your choice
+#
+# The very first apply must be run locally: this workflow authenticates as the
+# terraform-ci service account, which does not exist until Terraform has created it.
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/deploy.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "What to run"
+        type: choice
+        options: [plan, apply]
+        default: plan
+
+permissions:
+  contents: read
+  # Required for Workload Identity Federation — without it the auth step cannot mint an
+  # OIDC token and fails.
+  id-token: write
+
+# State is shared with local runs and every other CI run, so never run two at once.
+# Not cancel-in-progress: killing a job mid-apply leaves a held state lock behind.
+concurrency:
+  group: terraform-state
+  cancel-in-progress: false
+
+env:
+  # Terraform reads TF_VAR_* from the environment, the same mechanism .env uses locally.
+  TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+  TF_VAR_region: ${{ secrets.GCP_REGION }}
+  # Removes interactive prompts and trims CI-hostile output.
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  terraform:
+    name: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fail fast if secrets are missing
+        # An unset secret is an empty string, and Terraform would treat that as a real
+        # value — an empty project_id produces a confusing mid-apply API error rather
+        # than an obvious configuration mistake.
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in GCP_PROJECT_ID GCP_REGION GCP_WORKLOAD_IDENTITY_PROVIDER GCP_TERRAFORM_SERVICE_ACCOUNT; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Required secret $name is not set"
+              missing=1
+            fi
+          done
+          exit $missing
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_TERRAFORM_SERVICE_ACCOUNT: ${{ secrets.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.2
+          # Emit machine-readable output instead of wrapping the CLI, so plan text can be
+          # captured cleanly for the summary.
+          terraform_wrapper: false
+
+      - name: Format check
+        working-directory: terraform
+        run: terraform fmt -check -recursive -diff
+
+      - name: Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Decide operation
+        id: decide
+        # Computed in shell rather than a GitHub expression: on non-dispatch events
+        # inputs.operation is empty, and GitHub's == coerces operands to numbers, so
+        # comparisons against empty values are a reliable source of silent mistakes.
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            op=apply
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+               && [ "${{ inputs.operation }}" = "apply" ]; then
+            op=apply
+          else
+            op=plan
+          fi
+          echo "operation=$op" >> "$GITHUB_OUTPUT"
+          echo "Operation: $op"
+
+      - name: Plan
+        working-directory: terraform
+        run: terraform plan -no-color -out=tfplan | tee plan.txt
+
+      - name: Publish plan to summary
+        if: always()
+        working-directory: terraform
+        run: |
+          {
+            echo "### terraform ${{ steps.decide.outputs.operation }}"
+            echo
+            echo '```terraform'
+            # Summaries cap at 1MB; a large plan would otherwise silently truncate.
+            tail -c 60000 plan.txt || echo "(no plan output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply
+        if: steps.decide.outputs.operation == 'apply'
+        working-directory: terraform
+        # Applies the saved plan, not a fresh one, so what was reviewed is what runs.
+        run: terraform apply -no-color -auto-approve tfplan
+
+      - name: Outputs
+        if: steps.decide.outputs.operation == 'apply'
+        working-directory: terraform
+        run: |
+          {
+            echo "### Deployed"
+            echo
+            echo "Service URL: $(terraform output -raw service_url)"
+            echo
+            echo "Image watched by the deploy trigger: \`$(terraform output -raw image)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
