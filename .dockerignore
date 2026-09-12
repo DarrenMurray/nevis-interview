@@ -1,0 +1,18 @@
+# Build output and local tooling — never needed inside the image context.
+target/
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+*.iml
+
+# Docs and local config
+README.md
+CLAUDE.md
+HELP.md
+Makefile
+Dockerfile
+.dockerignore
+scripts/
+.github/
