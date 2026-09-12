@@ -30,6 +30,11 @@ spring:
     # Nothing to migrate against, and a failed migration aborts context startup.
     enabled: false
 
+search:
+  embedding:
+    # The backfill queries the database on startup, which these tests do not have.
+    backfill: false
+
 springdoc:
   api-docs:
     version: openapi_3_1

@@ -17,9 +17,18 @@
 		<java.version>25</java.version>
 		<!-- springdoc 3.x is the Spring Boot 4 / Jackson 3 line; 2.x targets Boot 3. -->
 		<springdoc.version>3.1.1</springdoc.version>
+		<!-- Spring AI 2.x is the Boot 4 line; 1.1.x targets Boot 3.5. -->
+		<spring-ai.version>2.0.1</spring-ai.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>${spring-ai.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
 			<dependency>
 				<!-- Boot 4's parent no longer manages Testcontainers versions. -->
 				<groupId>org.testcontainers</groupId>
@@ -64,6 +73,15 @@
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<!-- In-process ONNX embeddings. No external embedding API, no API key. -->
+			<groupId>org.springframework.ai</groupId>
+			<!-- pytorch-engine looks redundant (inference is ONNX Runtime, DJL only
+			     tokenises) but excluding it breaks native library resolution with
+			     "Unexpected flavor: cpu" — DJL resolves the tokenizer's .so via the engine.
+			     Its natives are pre-cached in the image instead; see the Dockerfile. -->
+			<artifactId>spring-ai-starter-model-transformers</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springdoc</groupId>

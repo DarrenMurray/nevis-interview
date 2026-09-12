@@ -21,6 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Guards the OpenAPI document against drifting from what the API serves.
  *
+ * <p>Document-only: no request is made to an endpoint that writes, so this needs no database.
+ * The schema-versus-wire-format comparison lives in {@code ApiIntegrationTest}, which has one.
+ *
  * <p>swagger-core builds schemas with its own Jackson 2 mapper and cannot see
  * {@code spring.jackson.property-naming-strategy}, so without
  * {@code OpenApiConfig#snakeCaseModelResolver} the document says {@code firstName} while the API
@@ -45,16 +48,6 @@ class OpenApiContractTest {
         return json.readTree(response.body());
     }
 
-    private JsonNode postJson(String path, String body) throws Exception {
-        HttpResponse<String> response = http.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
-                        .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(body))
-                        .build(),
-                HttpResponse.BodyHandlers.ofString());
-        assertThat(response.statusCode()).isEqualTo(201);
-        return json.readTree(response.body());
-    }
 
     private static Set<String> fieldNames(JsonNode node) {
         return new TreeSet<>(node.propertyNames());
@@ -103,34 +96,7 @@ class OpenApiContractTest {
         }
     }
 
-    @Test
-    @DisplayName("documented Client fields are exactly the fields the API returns")
-    void clientSchemaMatchesTheWireFormat() throws Exception {
-        // All optional fields populated: non_null inclusion drops nulls, which would make
-        // the comparison vacuous.
-        JsonNode served = postJson("/clients", """
-                {
-                  "first_name": "John",
-                  "last_name": "Doe",
-                  "email": "john.doe@neviswealth.com",
-                  "description": "Retired engineer.",
-                  "social_links": ["https://www.linkedin.com/in/johndoe"]
-                }""");
 
-        assertThat(fieldNames(served)).isEqualTo(schemaProperties("Client"));
-    }
-
-    @Test
-    @DisplayName("documented Document fields are exactly the fields the API returns")
-    void documentSchemaMatchesTheWireFormat() throws Exception {
-        JsonNode served = postJson("/clients/abc-123/documents", """
-                {
-                  "title": "Utility Bill - March 2026",
-                  "content": "Thames Water. Service address: 12 Acacia Avenue, London N1 4TG."
-                }""");
-
-        assertThat(fieldNames(served)).isEqualTo(schemaProperties("Document"));
-    }
 
     @Test
     @DisplayName("required fields are advertised as required")
