@@ -27,6 +27,9 @@ services:
       start_period: 10s
 
   api:
+    # Same tag as `make docker-build`, so the two share build cache and the smoke test
+    # exercises the image that gets pushed.
+    image: nevis/search-api:dev
     build:
       context: .
     depends_on:

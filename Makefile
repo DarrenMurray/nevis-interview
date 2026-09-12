@@ -111,9 +111,9 @@ docker-build: check-docker
 docker-run: check-docker
 	$(DOCKER) run --rm -p $(PORT):8080 --name search-api $(IMAGE):$(TAG)
 
-## docker-smoke  Start the built image and assert it serves traffic
+## docker-smoke  Bring up the compose stack and assert it serves traffic
 docker-smoke: check-docker
-	DOCKER="$(DOCKER)" ./scripts/docker-smoke.sh $(IMAGE):$(TAG) $(PORT)
+	DOCKER="$(DOCKER)" ./scripts/docker-smoke.sh $(PORT)
 
 ## ci            What CI runs: tests, image build, image smoke test
 ci: test docker-build docker-smoke

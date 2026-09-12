@@ -1,37 +1,52 @@
 #!/usr/bin/env bash
-# Start the built image and assert it actually serves traffic.
+# Bring up the compose stack and assert the API serves traffic.
 #
-# The Dockerfile's assembly (COPY paths, flattened jar layers, the unprivileged user)
-# cannot be verified by the Maven test suite — only by booting the image. This is that
-# check, and it is what CI runs after building.
+# The app requires Postgres, so a lone container cannot be smoke-tested: Flyway fails at
+# startup and the container exits. This drives compose instead, which is also what the
+# Dockerfile's assembly, the migrations and the healthcheck ordering need to be checked
+# against.
 set -euo pipefail
 
-IMAGE="${1:-nevis/search-api:dev}"
-PORT="${2:-8080}"
+PORT="${1:-8080}"
 DOCKER="${DOCKER:-docker}"
-NAME="search-api-smoke-$$"
-TIMEOUT="${TIMEOUT:-90}"
+TIMEOUT="${TIMEOUT:-180}"
 
 cleanup() {
-    echo "--- container logs (tail) ---"
-    $DOCKER logs "$NAME" 2>&1 | tail -30 || true
-    $DOCKER rm -f "$NAME" >/dev/null 2>&1 || true
+    status=$?
+    if [ "$status" -ne 0 ]; then
+        echo "--- api logs (tail) ---"
+        $DOCKER compose logs --tail 40 api 2>&1 || true
+        echo "--- db logs (tail) ---"
+        $DOCKER compose logs --tail 15 db 2>&1 || true
+    fi
+    # -v so the next run starts from an empty database and migrations are exercised.
+    $DOCKER compose down -v >/dev/null 2>&1 || true
+    exit $status
 }
 trap cleanup EXIT
 
-echo "Starting $IMAGE as $NAME on port $PORT"
-$DOCKER run -d --name "$NAME" -p "${PORT}:8080" "$IMAGE" >/dev/null
+echo "Building and starting the stack..."
+$DOCKER compose up --build -d
 
 for i in $(seq 1 "$TIMEOUT"); do
     code="$(curl -fsS -o /dev/null -w '%{http_code}' "http://localhost:${PORT}/search?q=smoke" 2>/dev/null || true)"
     if [ "$code" = "200" ]; then
         echo "PASS: GET /search returned 200 after ${i}s"
+
+        # The API answering proves Flyway ran, but assert the schema explicitly so a
+        # migration silently doing nothing cannot pass as success.
+        tables="$($DOCKER compose exec -T db psql -U search_api -d search -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('clients','documents')" \
+            2>/dev/null | tr -d '[:space:]')"
+        if [ "$tables" != "2" ]; then
+            echo "FAIL: expected clients and documents tables, found ${tables:-none}" >&2
+            exit 1
+        fi
+        echo "PASS: schema migrated (clients, documents)"
         exit 0
     fi
-    # Fail fast rather than waiting out the timeout if the container has already died.
-    running="$($DOCKER inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null || echo false)"
-    if [ "$running" != "true" ]; then
-        echo "FAIL: container is no longer running" >&2
+    if [ "$($DOCKER compose ps -q api | wc -l)" -eq 0 ]; then
+        echo "FAIL: api container is gone" >&2
         exit 1
     fi
     sleep 1

@@ -40,7 +40,7 @@ make                 # == make test; runs all tests
 make build           # package the jar, with tests
 make run             # start the API on :8080
 make docker-build    # build the image (nevis/search-api:dev)
-make docker-smoke    # boot the built image, assert GET /search returns 200
+make docker-smoke    # compose up, assert GET /search returns 200 and schema migrated
 make ci              # what CI runs: test + docker-build + docker-smoke
 make help            # list targets and resolved settings
 ```

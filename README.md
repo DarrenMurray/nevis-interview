@@ -329,9 +329,9 @@ CI is [`.github/workflows/test.yml`](.github/workflows/test.yml), which runs on 
 on pull requests, and on manual dispatch. Two parallel jobs, both driven through `make`:
 
 - **tests** — JDK 25 via `setup-java`, then `make test`
-- **image** — `make docker-build`, then `make docker-smoke`, which boots the built image and asserts
-  `GET /search` returns `200`. This is the only check that exercises the Dockerfile itself; the
-  Maven suite never touches it.
+- **image** — `make docker-build`, then `make docker-smoke`, which brings up the compose stack and
+  asserts `GET /search` returns `200` *and* that the schema migrated. The only check covering the
+  Dockerfile, the migrations and the healthcheck ordering; the Maven suite touches none of them.
 
 ## Docker
 
@@ -339,7 +339,7 @@ on pull requests, and on manual dispatch. Two parallel jobs, both driven through
 docker compose up --build   # the whole local stack: API + Postgres
 make docker-build           # build nevis/search-api:dev
 make docker-push            # build and push to Artifact Registry (triggers a deploy)
-make docker-smoke           # boot the built image and assert it serves traffic
+make docker-smoke           # bring up the stack and assert it serves traffic
 ```
 
 `docker-compose.yml` runs `pgvector/pgvector:0.8.6-pg16` alongside the API. The database
