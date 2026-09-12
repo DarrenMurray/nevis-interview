@@ -48,7 +48,7 @@ public class DocumentController {
                     example = "f7231496-3fcc-474c-bf02-930aecbd37af")
             @PathVariable String clientId,
             @Valid @RequestBody CreateDocumentRequest request) {
-        // TODO: verify the client exists (404 if not) and persist the document.
+        // TODO: verify the client exists (404 if not) and persist.
         String id = UUID.randomUUID().toString();
         DocumentResponse body = new DocumentResponse(
                 id,

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Nevis Search">
+  <!-- Rounded tile so the mark reads at 16px rather than dissolving into the tab strip. -->
+  <rect width="32" height="32" rx="7" fill="#0969da"/>
+  <!-- Magnifier: lens + handle, stroked rather than filled so it stays legible when scaled down. -->
+  <g fill="none" stroke="#ffffff" stroke-width="2.75" stroke-linecap="round">
+    <circle cx="14.5" cy="14" r="6.25"/>
+    <line x1="19.4" y1="19" x2="24" y2="23.6"/>
+  </g>
+</svg>

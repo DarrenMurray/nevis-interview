@@ -11,13 +11,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * OpenAPI document metadata.
- *
- * <p>The document itself is assembled by springdoc from the annotations on the controllers and
- * DTOs — this class only supplies the parts that have nowhere else to live. Served as JSON at
- * {@code /v3/api-docs} and as Swagger UI at {@code /swagger-ui.html}.
- */
+/** OpenAPI metadata. The document is built by springdoc from controller and DTO annotations. */
 @Configuration
 @OpenAPIDefinition(
         info = @Info(
@@ -34,9 +28,8 @@ import org.springframework.context.annotation.Configuration;
                         *"utility bill"*. Those phrases share no characters, so this is vector \
                         similarity over embeddings, not keyword matching.
 
-                        **Current state: skeleton.** Endpoints validate their input and return \
-                        correctly-shaped responses, but nothing is persisted and `/search` always \
-                        returns an empty array.
+                        **Current state:** endpoints validate input and return correctly-shaped \
+                        responses; search is not implemented and `/search` returns an empty array.
                         """,
                 contact = @Contact(name = "Darren Murray")),
         servers = @Server(url = "http://localhost:8080", description = "Local development"),
@@ -48,17 +41,13 @@ import org.springframework.context.annotation.Configuration;
 public class OpenApiConfig {
 
     /**
-     * Makes the generated schemas use snake_case, matching what the API actually serves.
+     * Generates snake_case schema names.
      *
-     * <p>Without this the document advertises {@code firstName} while the endpoints return
-     * {@code first_name}. The cause is a Jackson version split: Spring Boot 4 serialises with
-     * Jackson 3 ({@code tools.jackson}), but swagger-core still builds schemas with its own
-     * Jackson 2 {@code ObjectMapper}, which cannot see
-     * {@code spring.jackson.property-naming-strategy}. Supplying the resolver with a mapper
-     * configured the same way closes the gap.
+     * <p>Boot 4 serialises with Jackson 3, but swagger-core builds schemas with its own Jackson 2
+     * mapper and cannot see {@code spring.jackson.property-naming-strategy} — without this the
+     * document says {@code firstName} while the API returns {@code first_name}.
      *
-     * <p>This must stay in step with {@code spring.jackson.property-naming-strategy} in
-     * {@code application.yaml}. {@code OpenApiContractTest} fails if the two ever diverge.
+     * <p>Must match {@code application.yaml}; {@code OpenApiContractTest} fails if they diverge.
      */
     @Bean
     ModelResolver snakeCaseModelResolver() {

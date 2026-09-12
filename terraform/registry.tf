@@ -4,8 +4,7 @@ resource "google_artifact_registry_repository" "containers" {
   format        = "DOCKER"
   description   = "Container images for the Nevis search API"
 
-  # Keep the registry from growing without bound. Untagged images are build detritus;
-  # tagged ones are kept so a rollback target always exists.
+  # Untagged images are build detritus; tagged ones are kept as rollback targets.
   cleanup_policies {
     id     = "delete-untagged-after-7-days"
     action = "DELETE"

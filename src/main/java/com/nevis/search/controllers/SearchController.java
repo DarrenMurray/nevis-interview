@@ -27,12 +27,7 @@ public class SearchController {
         this.searchService = searchService;
     }
 
-    /**
-     * Searches across clients and their documents.
-     *
-     * <p>Returns an empty array rather than a 404 when nothing matches — no matches is a valid
-     * result, not a missing resource.
-     */
+    /** Returns an empty array rather than 404 when nothing matches. */
     @Operation(
             summary = "Search clients and documents",
             description = """

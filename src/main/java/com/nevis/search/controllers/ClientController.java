@@ -41,7 +41,7 @@ public class ClientController {
     })
     @PostMapping
     public ResponseEntity<ClientResponse> create(@Valid @RequestBody CreateClientRequest request) {
-        // TODO: persist the client. Stubbed: echo the request back with a generated id.
+        // TODO: persist. Stubbed: echoes the request with a generated id.
         String id = UUID.randomUUID().toString();
         ClientResponse body = new ClientResponse(
                 id,

@@ -1,0 +1,38 @@
+# Test overrides.
+#
+# CAREFUL: a file of this name on the test classpath SHADOWS src/main/resources/
+# application.yaml entirely — Spring does not merge the two. Anything the context needs
+# must therefore be repeated here, which is why the datasource URL appears below even
+# though no test connects to a database.
+#
+# The current tests cover the web layer and the OpenAPI contract; none touches SQL.
+# Keeping them database-free means `make test` runs without Docker, which matters because
+# Docker requires root on this machine. Tests that do exercise SQL should use
+# Testcontainers with @ServiceConnection, which overrides these values per test.
+spring:
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
+
+  datasource:
+    # Never connected to. Present only so driver-class resolution succeeds while the
+    # context is built.
+    url: jdbc:postgresql://localhost:5432/unused
+    username: unused
+    password: unused
+    hikari:
+      # Negative timeout means "do not attempt a connection at startup, and do not fail".
+      # Without it the pool tries to reach Postgres during context refresh and every
+      # @SpringBootTest fails with a connection error.
+      initialization-fail-timeout: -1
+
+  flyway:
+    # Nothing to migrate against, and a failed migration aborts context startup.
+    enabled: false
+
+springdoc:
+  api-docs:
+    version: openapi_3_1
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

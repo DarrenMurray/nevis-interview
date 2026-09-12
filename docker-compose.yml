@@ -1,0 +1,57 @@
+# Local stack: API plus Postgres with the extensions search needs. The app applies its own
+# Flyway migrations at startup, so the database self-provisions.
+
+services:
+  db:
+    # pgvector's image ships the extension prebuilt. Full version+engine tag; bare `pg16`
+    # would drift.
+    image: pgvector/pgvector:0.8.6-pg16
+    environment:
+      POSTGRES_DB: search
+      POSTGRES_USER: search_api
+      POSTGRES_PASSWORD: search_api
+      # Require real auth even locally.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    ports:
+      # For psql from the host. Remove to keep it on the compose network only.
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready, not TCP: Postgres accepts connections during init while still
+      # rejecting queries, which would let the API start and fail its migrations.
+      test: ["CMD-SHELL", "pg_isready -U search_api -d search"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  api:
+    # Same tag as `make docker-build`, so the two share build cache and the smoke test
+    # exercises the image that gets pushed.
+    image: nevis/search-api:dev
+    build:
+      context: .
+    depends_on:
+      db:
+        # Waits for the healthcheck, not just container start.
+        condition: service_healthy
+    environment:
+      # `db` resolves on the compose network.
+      DB_URL: jdbc:postgresql://db:5432/search
+      DB_USER: search_api
+      DB_PASSWORD: search_api
+      # Size the heap from the cgroup limit, not the host's memory.
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # /search?q= returns 400 by design, so probe a valid query.
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:8080/search?q=healthcheck' >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  db-data:

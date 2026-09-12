@@ -6,12 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 
 import java.util.List;
 
-/**
- * Request body for {@code POST /clients}.
- *
- * <p>JSON is snake_case (see {@code spring.jackson.property-naming-strategy}), so
- * {@code firstName} binds from {@code first_name}.
- */
+/** Request body for {@code POST /clients}. JSON is snake_case: {@code firstName} binds from {@code first_name}. */
 @Schema(name = "CreateClientRequest", description = "Details of the client to create")
 public record CreateClientRequest(
 
@@ -23,8 +18,7 @@ public record CreateClientRequest(
                 requiredMode = Schema.RequiredMode.REQUIRED)
         @NotBlank String lastName,
 
-        @Schema(description = "Contact email. Searchable — a query may match any part of it, "
-                + "including the domain.",
+        @Schema(description = "Contact email. Searchable, including the domain.",
                 example = "john.doe@neviswealth.com",
                 requiredMode = Schema.RequiredMode.REQUIRED)
         @NotBlank @Email String email,

@@ -1,6 +1,19 @@
 spring:
   application:
     name: search-api
+
+  datasource:
+    # Defaults match docker-compose so `docker compose up` needs no env vars. Cloud Run
+    # overrides all three; the password there comes from Secret Manager.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/search}
+    username: ${DB_USER:search_api}
+    password: ${DB_PASSWORD:search_api}
+
+  flyway:
+    # Migrations run at startup, so a fresh database self-provisions. The first migration
+    # creates the vector/pg_trgm/citext extensions as well as the tables.
+    enabled: true
+    locations: classpath:db/migration
   jackson:
     # The API spec uses snake_case (first_name, client_id, social_links); Java fields stay camelCase.
     property-naming-strategy: SNAKE_CASE

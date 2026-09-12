@@ -6,15 +6,12 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * Search across clients and documents.
+ * Search across clients and documents, shared by the JSON API and the UI.
  *
- * <p>Shared by the JSON API and the HTMX UI so both return the same results — the UI is a
- * different rendering of the same query, not a second implementation of it.
+ * <p>Two strategies, kept separate: clients match lexically (substring over email, name,
+ * description), documents semantically (vector similarity).
  *
- * <p>Every method is currently a stub returning no results. The two search strategies are
- * deliberately separate because they need different machinery: clients match lexically
- * (substring over email, name, description), while documents match semantically (vector
- * similarity, so "address proof" finds a document saying "utility bill").
+ * <p>All methods are stubs returning no results.
  */
 @Service
 public class SearchService {
@@ -26,14 +23,13 @@ public class SearchService {
 
     /** Clients only — lexical match. */
     public List<SearchResultResponse> searchClients(String query) {
-        // TODO: case-insensitive substring over email/first_name/last_name/description,
-        // ranked by trigram similarity.
+        // TODO: case-insensitive substring over email/name/description, ranked by trigram.
         return List.of();
     }
 
     /** Documents only — semantic match. */
     public List<SearchResultResponse> searchDocuments(String query) {
-        // TODO: embed the query, rank by cosine distance against stored document vectors.
+        // TODO: embed the query, rank by cosine distance against stored vectors.
         return List.of();
     }
 
