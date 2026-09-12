@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: search-api
+  jackson:
+    # The API spec uses snake_case (first_name, client_id, social_links); Java fields stay camelCase.
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
+
+springdoc:
+  api-docs:
+    # OpenAPI 3.1 to match the version the assignment's spec was written against.
+    version: openapi_3_1
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    # Show endpoints grouped by tag, in the order declared rather than alphabetically.
+    tags-sorter: alpha
+    operations-sorter: method
+    display-request-duration: true
