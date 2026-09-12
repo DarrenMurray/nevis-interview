@@ -4,9 +4,8 @@
 FROM eclipse-temurin:25-jdk-noble AS build
 WORKDIR /build
 
-# Copy only the build descriptors first. Dependency resolution is the slow step, so
-# giving it its own layer means it is re-run only when pom.xml or the wrapper changes,
-# not on every source edit.
+# Descriptors first: dependency resolution gets its own cached layer, re-run only when
+# pom.xml or the wrapper changes.
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 RUN ./mvnw -B dependency:go-offline
@@ -14,23 +13,26 @@ RUN ./mvnw -B dependency:go-offline
 COPY src/ src/
 RUN ./mvnw -B clean package -DskipTests
 
-# Split the fat jar into layers that change at different rates (dependencies rarely,
-# application code constantly) so image pulls only transfer what actually changed.
-# --launcher is required: without it this produces a thin jar plus a bare dependencies/lib
-# and an EMPTY spring-boot-loader/, so the JarLauncher entrypoint below cannot resolve.
+# Split the fat jar so pulls transfer only what changed.
+# --launcher is required: without it spring-boot-loader/ is empty and the JarLauncher
+# entrypoint below cannot resolve.
 RUN java -Djarmode=tools -jar target/search-api-*.jar extract --layers --launcher --destination extracted
 
 # ---------- runtime ----------
 FROM eclipse-temurin:25-jre-noble AS runtime
 WORKDIR /app
 
-# Run unprivileged: nothing here needs root.
+# Not guaranteed in the JRE base image; the compose healthcheck needs it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Nothing here needs root.
 RUN groupadd --system --gid 1001 app \
     && useradd --system --uid 1001 --gid app --no-create-home app
 
-# Each COPY is its own image layer, ordered least- to most-frequently changed.
-# The layer directories are flattened into /app so that the JVM's default classpath
-# (the working directory) resolves the launcher and the application.
+# One layer per COPY, least- to most-frequently changed. Flattened into /app so the JVM's
+# default classpath (the working directory) resolves the launcher.
 COPY --from=build --chown=app:app /build/extracted/dependencies/ ./
 COPY --from=build --chown=app:app /build/extracted/spring-boot-loader/ ./
 COPY --from=build --chown=app:app /build/extracted/snapshot-dependencies/ ./
@@ -39,6 +41,6 @@ COPY --from=build --chown=app:app /build/extracted/application/ ./
 USER app
 EXPOSE 8080
 
-# Pass JVM flags at runtime via JAVA_TOOL_OPTIONS, which the JVM reads on its own —
-# so this stays an exec-form entrypoint with no shell wrapper and correct signal handling.
+# JVM flags go in JAVA_TOOL_OPTIONS, which the JVM reads itself — exec form, no shell, so
+# signals are handled correctly.
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]

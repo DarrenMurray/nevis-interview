@@ -10,24 +10,38 @@ An advisor needs to find things two different ways, and those two ways need diff
 | `NevisWealth` | the client `john.doe@neviswealth.com` | **lexical** — case-insensitive substring of the email domain |
 | `address proof` | a document containing *"utility bill"* | **semantic** — the two phrases share no characters, so keyword matching cannot connect them |
 
-> ### Status: skeleton
+> ### Status: schema and plumbing in place, search not implemented
 >
-> The endpoints below exist, validate their input, and return correctly-shaped responses. They do
-> **not** persist anything, and `GET /search` always returns `[]`. This documents the contract.
+> The endpoints validate their input and return correctly-shaped responses, and there is a real
+> Postgres schema with the indexes both search paths need. What is **not** built yet: the
+> repositories that read and write those tables, the embedding model, and the search queries
+> themselves. `GET /search` still returns `[]` for every query. This documents the contract.
 
 ## Requirements
 
 - **Java 25** (the build will refuse anything older with an actionable message)
-- **Docker** — only for `make docker-*`; not needed to run tests or the app
+- **Docker + Compose** — for the local Postgres. Not needed to run `make test`, which is
+  deliberately database-free
 - Maven is **not** required — use the committed wrapper (`./mvnw`)
 
 ## Quick start
 
 ```sh
-make          # run all tests (default target)
-make run      # start the API on http://localhost:8080
+docker compose up --build     # API on :8080, Postgres on :5432
+```
+
+That is the whole local setup. The app applies its own Flyway migrations at startup, so the
+database provisions itself on first run — no init script, no manual `psql`.
+
+```sh
+make          # run all tests (default target; needs no database)
+make run      # start the API alone on :8080 — expects Postgres to be reachable
 make help     # list every target and the resolved settings
 ```
+
+`make run` connects to `localhost:5432` as `search_api`/`search_api` by default, which matches
+compose — so `docker compose up db` plus `make run` is a workable loop if you want the app on
+the host and only the database in a container.
 
 If your `java` is not 25, point `make` at one explicitly:
 
@@ -37,6 +51,20 @@ make JDK=/path/to/jdk-25 test
 
 The variable is `JDK`, **not** `JAVA_HOME` — an inherited `JAVA_HOME` from an older JDK would
 otherwise win silently and produce a confusing compile failure.
+
+## Web UI
+
+`http://localhost:8080/` serves a search page: a centred box and two buttons, **Find Documents**
+and **Find Clients**. Each button calls its own endpoint, and the chosen button decides which of
+the two search strategies runs.
+
+Server-rendered with Thymeleaf; [htmx](https://htmx.org) swaps the results fragment in without a
+page reload. htmx is **vendored** at `/vendor/htmx.min.js` rather than loaded from a CDN, so the
+page works with no outbound network access.
+
+The UI and the JSON API share one `SearchService`, so the page cannot drift from what the API
+reports. UI routes live under `/ui/**`, return HTML fragments, and are excluded from the OpenAPI
+document — which describes the API, not the page.
 
 ## API
 
@@ -191,6 +219,17 @@ GET /search?q=                 -> 400
 
 ---
 
+### `GET /search/clients?q={query}` · `GET /search/documents?q={query}`
+
+The same contract as `/search`, restricted to one kind. These are what the UI's two buttons call.
+
+| Endpoint | Strategy |
+|---|---|
+| `/search/clients` | lexical — trigram over email, name, description |
+| `/search/documents` | semantic — cosine distance over content embeddings |
+
+Same status codes as `/search`: `200` with a possibly-empty array, `400` on a blank `q`.
+
 ### Errors
 
 Validation failures return Spring's default error body:
@@ -206,28 +245,78 @@ Validation failures return Spring's default error body:
 
 Per-field validation detail is not yet exposed.
 
-## How search will work
+## Data model
 
-**Clients — lexical.** Case-insensitive substring across `email`, `first_name`, `last_name` and
-`description`, ranked by trigram similarity. `NevisWealth` matches `john.doe@neviswealth.com`
-because the normalised query is a substring of the email.
+Created by [`V1__init.sql`](src/main/resources/db/migration/V1__init.sql), applied by Flyway at
+startup.
 
-**Documents — semantic.** `"address proof"` and `"utility bill"` have no words in common, so this
-cannot be keyword matching. Each document's content is converted once, on write, into a 384-number
-vector by an embedding model; the query is converted the same way at search time; and hits are
-ranked by cosine distance between those vectors. Text with similar *meaning* lands close together
-in that space, which is what bridges the two phrases.
+```
+clients     id uuid pk, first_name, last_name, email citext unique,
+            description, social_links text[], created_at
+documents   id uuid pk, client_id uuid fk -> clients on delete cascade,
+            title, content, summary, embedding vector(384), created_at
+```
 
-The model (`all-MiniLM-L6-v2`, ~80MB) is bundled in the image and runs **in-process**. There is no
-external LLM or embedding API, no API key, and no network call at request time — the whole stack
-runs offline.
+`embedding` is nullable so a document can be stored before it has been embedded. `citext` makes
+email comparison case-insensitive without scattering `lower()` through every query.
+
+## How search works
+
+The two cases in the brief need different machinery, so they are two queries with two ranking
+functions rather than one clever query attempting both.
+
+**Clients — lexical.** A trigram GIN index over the concatenated searchable text:
+
+```sql
+CREATE INDEX clients_trgm_idx ON clients
+    USING gin ((first_name || ' ' || last_name || ' ' || email || ' ' || coalesce(description, '')) gin_trgm_ops);
+```
+
+This is what makes `?q=NevisWealth` match `john.doe@neviswealth.com` — an `ILIKE '%neviswealth%'`
+can use this index, and `word_similarity()` ranks the hits.
+
+> Worth knowing why full-text search is *not* the tool for that case: Postgres' default parser
+> treats `john.doe@neviswealth.com` as a single `email` token, so a `tsquery` for `neviswealth`
+> never matches it. Full-text search earns its place on prose — the `description` field — not on
+> identifiers, and there is a separate `tsvector` index for exactly that.
+
+**Documents — semantic.** `"address proof"` and `"utility bill"` share no characters, so no
+lexical index can connect them. Each document's content is embedded once on write into a
+384-number vector; the query is embedded the same way at search time; hits are ranked by cosine
+distance:
+
+```sql
+SELECT id, title FROM documents ORDER BY embedding <=> $1 LIMIT 10;
+```
+
+The HNSW index (`vector_cosine_ops`) is built on the empty table, which is the cheap moment —
+unlike `ivfflat`, which needs representative data present before it can choose sensible cluster
+centroids. 384 dimensions sits well inside pgvector's 2000-dimension HNSW ceiling.
+
+There is also a `tsvector` index over document text, because exact terms — an account number, a
+reference code — are precisely what embeddings are worst at.
+
+### Embeddings run locally
+
+`all-MiniLM-L6-v2` via ONNX Runtime, in-process, with the weights baked into the image. No
+external embedding or LLM API, no API key, and no network call at request time — the whole stack
+runs offline from `docker compose up`.
 
 ## Testing
 
 ```sh
-make test      # all tests
+make test      # all tests — no database or Docker required
 make ci        # what CI runs: tests, image build, image smoke test
 ```
+
+The tests are deliberately **database-free**: `src/test/resources/application.yaml` disables Flyway
+and stops the connection pool attempting a connection during context startup, so `make test` runs
+anywhere. Tests that exercise SQL should use Testcontainers with `@ServiceConnection`, which
+overrides those settings per test.
+
+> That file **shadows** `src/main/resources/application.yaml` rather than merging with it — Spring
+> does not combine same-named config files. Anything the context needs has to be repeated there,
+> which is why it carries a datasource URL that nothing ever connects to.
 
 `OpenApiContractTest` is the interesting one: it asserts the OpenAPI document is 3.1, covers all
 three endpoints, advertises the right required fields, and — crucially — that every documented
@@ -247,10 +336,16 @@ on pull requests, and on manual dispatch. Two parallel jobs, both driven through
 ## Docker
 
 ```sh
-make docker-build     # build nevis/search-api:dev
-make docker-run       # run it, publishing :8080
-make docker-smoke     # boot it and assert it serves traffic
+docker compose up --build   # the whole local stack: API + Postgres
+make docker-build           # build nevis/search-api:dev
+make docker-push            # build and push to Artifact Registry (triggers a deploy)
+make docker-smoke           # boot the built image and assert it serves traffic
 ```
+
+`docker-compose.yml` runs `pgvector/pgvector:0.8.6-pg16` alongside the API. The database
+healthcheck is `pg_isready` rather than a TCP probe: Postgres accepts connections briefly during
+initialisation while still rejecting queries, which would let the API start and then fail its
+migrations. The API waits on `condition: service_healthy`.
 
 Multi-stage build: `eclipse-temurin:25-jdk-noble` compiles and splits the Spring Boot fat jar into
 layers with `-Djarmode=tools ... extract --layers`, and `25-jre-noble` runs them as an unprivileged
@@ -260,9 +355,9 @@ and dependency layers are not re-pushed when only application code changes.
 Pass JVM flags with `JAVA_TOOL_OPTIONS` — the JVM reads it natively, so the entrypoint stays
 shell-free and signals are handled correctly.
 
-> On a host where the Docker socket is root-owned and there is no `docker` group, the Makefile
-> detects that the daemon is unreachable and falls back to `sudo docker`. Override with
-> `make DOCKER=docker ...`.
+> If the Docker socket is root-owned with no `docker` group, every docker target fails fast with
+> the fix printed rather than hanging. Run them as `make docker-build DOCKER="sudo docker"`, or
+> create the group so no sudo is needed at all.
 
 ## Deployment
 
@@ -297,9 +392,19 @@ manual button ─┘    (:latest + :sha-)
 Worth knowing: **Cloud Run pins an image digest at deploy time**, so moving `:latest`
 alone changes nothing. The Cloud Build trigger is what makes push-to-update real.
 
-Ready for what comes next: a VPC, a reserved private-services range and service-networking
-peering are created up front, so Postgres is `enable_cloud_sql = true` rather than a
-re-architecture, and a UI can be a second Cloud Run service behind a load balancer.
+**Database.** Cloud SQL Postgres 16 on a private IP, reached over direct VPC egress — the instance
+has no public address. The password is generated by Terraform, stored in Secret Manager, and
+injected into the container via `secret_key_ref`, so it is not readable from the service
+definition. `enable_cloud_sql` defaults to **true**: the app runs Flyway at startup and exits if it
+cannot reach a database, so with it disabled the service crash-loops rather than degrading. It
+bills hourly from creation.
+
+**Memory is 2 GiB, not 1.** The JVM shares the instance with ONNX Runtime and the embedding model
+weights. At 1 GiB the container starts fine and is OOM-killed on the first embed, which is a much
+harder failure to read than one at boot.
+
+Apply Terraform **before** pushing a new image: an image that boots with no `DB_URL` will
+crash-loop.
 
 Cloud Run rather than Compute Engine because a GCE VM or managed instance group cannot
 redeploy itself when an image is pushed — the rollout would need driving externally
@@ -310,14 +415,21 @@ anyway, and the VM bills whether or not traffic arrives.
 ```
 src/main/java/com/nevis/search/
     SearchApiApplication.java
-    controllers/            HTTP layer
+    controllers/            HTTP layer — JSON API and the HTML UI routes
     dto/                    request/response records
-src/main/resources/application.yaml
-scripts/docker-smoke.sh     image boot check used by CI
+    search/                 SearchService, shared by the API and the UI
+    config/                 OpenAPI metadata
+src/main/resources/
+    application.yaml        datasource, Flyway, Jackson, springdoc
+    db/migration/           Flyway migrations — schema, extensions, indexes
+    templates/              Thymeleaf page and result fragment
+    static/vendor/          htmx, vendored rather than CDN-loaded
+docker-compose.yml          local stack: API + Postgres/pgvector
 Dockerfile                  multi-stage, layered, non-root
-Makefile                    single entry point for build, test, docker
-terraform/                  GCP: Cloud Run, Artifact Registry, push-triggered deploy
-.github/workflows/          test (build + test) and publish-image (build + push)
+Makefile                    single entry point for build, test, docker, terraform
+scripts/                    image smoke test, state-bucket bootstrap
+terraform/                  GCP: Cloud Run, Cloud SQL, registry, push-triggered deploy
+.github/workflows/          test, publish-image, deploy
 ```
 
 DTOs are records; validation annotations live on them. `snake_case` comes from one Jackson property

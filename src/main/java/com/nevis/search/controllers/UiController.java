@@ -8,14 +8,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 /**
- * Server-rendered UI.
- *
- * <p>Separate from the JSON controllers because it returns HTML: HTMX swaps markup into the
- * page, so these endpoints render fragments rather than data. They delegate to the same
- * {@link SearchService} as the API, so the UI cannot drift from what the API reports.
- *
- * <p>Annotated {@code @Hidden} to keep these out of the OpenAPI document — that describes the
- * API contract, and HTML fragments are an implementation detail of the page.
+ * Server-rendered UI. Returns HTML fragments for htmx to swap in, backed by the same
+ * {@link SearchService} as the API. {@code @Hidden} keeps these out of the OpenAPI document.
  */
 @Controller
 @Hidden
@@ -33,11 +27,8 @@ public class UiController {
     }
 
     /**
-     * The "Find Clients" button.
-     *
-     * <p>{@code q} is optional here, unlike the JSON API which rejects a blank query with a
-     * 400. A user pressing the button with an empty box should see a prompt, not an error
-     * page swapped into the results area.
+     * The "Find Clients" button. {@code q} is optional here, unlike the JSON API: an empty box
+     * should render a prompt rather than swap a 400 into the results area.
      */
     @GetMapping("/ui/search/clients")
     public String searchClients(@RequestParam(name = "q", required = false) String q, Model model) {

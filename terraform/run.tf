@@ -1,12 +1,11 @@
-# Runtime identity for the service. Separate from the default compute service account,
-# which is broadly privileged; this one starts with nothing and gains only what it needs.
+# Runtime identity. The default compute service account is broadly privileged; this one
+# starts with nothing.
 resource "google_service_account" "runtime" {
   account_id   = "${var.service_name}-run"
   display_name = "Cloud Run runtime identity for ${var.service_name}"
 }
 
-# Granted ahead of the database so that turning on enable_cloud_sql does not also require
-# an IAM change. Harmless while no instance exists.
+# Granted ahead of the database so enabling it needs no IAM change.
 resource "google_project_iam_member" "runtime_sql_client" {
   project = var.project_id
   role    = "roles/cloudsql.client"
@@ -24,8 +23,7 @@ resource "google_cloud_run_v2_service" "api" {
   location            = var.region
   deletion_protection = false
 
-  # Public API. A UI added later can call it directly; lock this down to
-  # INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER once a load balancer fronts it.
+  # Tighten to INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER once a load balancer fronts it.
   ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
@@ -37,8 +35,7 @@ resource "google_cloud_run_v2_service" "api" {
     }
 
     # Direct VPC egress rather than a Serverless VPC Access connector: no connector
-    # instances to pay for or scale, and it is what lets this service reach a
-    # private-IP Cloud SQL instance and future internal services.
+    # instances to pay for, and it reaches private-IP Cloud SQL.
     vpc_access {
       egress = "PRIVATE_RANGES_ONLY"
 
@@ -49,8 +46,7 @@ resource "google_cloud_run_v2_service" "api" {
     }
 
     containers {
-      # Placeholder on first apply only; see variable "initial_image". The real image
-      # arrives via the push-triggered deployer, and ignore_changes below keeps it.
+      # Placeholder on first apply only; see variable "initial_image".
       image = var.initial_image
 
       ports {
@@ -58,22 +54,56 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       resources {
+        # 2 GiB: the JVM shares the instance with ONNX Runtime and the embedding weights.
+        # At 1 GiB the container starts fine and is OOM-killed on the first embed.
         limits = {
           cpu    = "1"
-          memory = "1Gi"
+          memory = "2Gi"
         }
       }
 
       env {
-        name  = "JAVA_TOOL_OPTIONS"
+        name = "JAVA_TOOL_OPTIONS"
+        # Container memory is not the host's; size the heap from the cgroup limit.
         value = "-XX:MaxRAMPercentage=75"
       }
 
-      # TCP rather than HTTP deliberately. The app has no health endpoint yet, and the
-      # only path that returns 2xx unconditionally is /search?q=<something> — whether
-      # Cloud Run accepts a query string in a probe path is undocumented, so relying on
-      # it would be a guess. Switch to an http_get on /actuator/health when actuator is
-      # added; that is the right long-term answer.
+      # --- Database -----------------------------------------------------------------
+      # Private IP over direct VPC egress. Dynamic so the config still plans with
+      # enable_cloud_sql = false, though the app will not boot in that state.
+      dynamic "env" {
+        for_each = var.enable_cloud_sql ? [1] : []
+        content {
+          name  = "DB_URL"
+          value = "jdbc:postgresql://${google_sql_database_instance.postgres[0].private_ip_address}:5432/${var.db_name}"
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.enable_cloud_sql ? [1] : []
+        content {
+          name  = "DB_USER"
+          value = var.db_user
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.enable_cloud_sql ? [1] : []
+        content {
+          name = "DB_PASSWORD"
+          # From Secret Manager, so it is not readable via `gcloud run services describe`.
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.db_password[0].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      # TCP because there is no health endpoint yet, and whether Cloud Run accepts a
+      # query string in a probe path is undocumented. Switch to http_get on
+      # /actuator/health when actuator is added.
       startup_probe {
         tcp_socket {
           port = 8080
@@ -86,17 +116,19 @@ resource "google_cloud_run_v2_service" "api" {
   }
 
   lifecycle {
-    # After the first apply, the deployed image is owned by the push-triggered deployer.
-    # Without this, every terraform apply would roll the service back to whatever digest
-    # :latest pointed at when the plan was made.
+    # The push-triggered deployer owns the running image after the first apply; without
+    # this, every apply would roll the service back to the digest seen at plan time.
     ignore_changes = [template[0].containers[0].image]
   }
 
-  depends_on = [google_project_service.required]
+  depends_on = [
+    google_project_service.required,
+    google_sql_database_instance.postgres,
+    google_secret_manager_secret_version.db_password,
+  ]
 }
 
-# Public, unauthenticated. Fine for a demo API with no data; remove this to require IAM
-# or an identity token on every call.
+# Public and unauthenticated. Remove to require IAM or an identity token.
 resource "google_cloud_run_v2_service_iam_member" "public" {
   name     = google_cloud_run_v2_service.api.name
   location = google_cloud_run_v2_service.api.location

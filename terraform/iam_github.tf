@@ -1,9 +1,5 @@
-# Keyless authentication for GitHub Actions.
-#
-# The alternative is a service-account JSON key pasted into a repository secret: a
-# long-lived credential that never expires, cannot be scoped to a repository, and leaks
-# permanently once exposed. Workload Identity Federation instead trades GitHub's OIDC
-# token for a short-lived GCP token, and only for the repository named below.
+# Keyless auth for GitHub Actions: GitHub's OIDC token is exchanged for a short-lived GCP
+# token, scoped to the repository below. No service-account key exists to leak.
 
 resource "google_iam_workload_identity_pool" "github" {
   workload_identity_pool_id = "github"
@@ -25,8 +21,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.ref"              = "assertion.ref"
   }
 
-  # Without this condition ANY GitHub repository on the internet could exchange a token
-  # against this provider. It is the security boundary, not an optimisation.
+  # Security boundary: without this, any GitHub repository could exchange a token here.
   attribute_condition = "assertion.repository == ${jsonencode(var.github_repository)}"
 
   oidc {
@@ -34,7 +29,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   }
 }
 
-# Identity the workflow acts as. Its only power is writing images.
+# Identity the workflow acts as; can only write images.
 resource "google_service_account" "github_publisher" {
   account_id   = "github-publisher"
   display_name = "GitHub Actions image publisher"
@@ -47,9 +42,8 @@ resource "google_service_account_iam_member" "github_publisher_wif" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
 }
 
-# Scoped to the one repository, not project-wide: CI can push images and do nothing else.
-# It deliberately cannot deploy — the Pub/Sub trigger does that, so a compromised
-# workflow token cannot change what is running.
+# Repository-scoped, push-only. Deploying is the trigger's job, so a leaked workflow token
+# cannot change what is running.
 resource "google_artifact_registry_repository_iam_member" "github_publisher_writer" {
   location   = google_artifact_registry_repository.containers.location
   repository = google_artifact_registry_repository.containers.name

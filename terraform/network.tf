@@ -1,8 +1,5 @@
-# A VPC exists from day one even though the stubbed API needs no private networking.
-# Cloud Run reaching a private-IP Cloud SQL instance, and a future UI service talking to
-# this API internally, both require it — and retrofitting a network under a running
-# service is far more disruptive than creating an idle one now. An unused VPC, subnet and
-# IP range cost nothing.
+# Cloud Run reaches Cloud SQL over this network. Retrofitting a VPC under a running
+# service is disruptive, and an idle VPC, subnet and IP range cost nothing.
 
 resource "google_compute_network" "main" {
   name                    = "${var.service_name}-vpc"
@@ -10,8 +7,8 @@ resource "google_compute_network" "main" {
   depends_on              = [google_project_service.required]
 }
 
-# Cloud Run direct VPC egress attaches to this subnet. /24 leaves room for the service to
-# scale out; direct egress consumes an address per instance.
+# Cloud Run direct VPC egress attaches here. Direct egress uses one address per instance,
+# so /24 leaves room to scale.
 resource "google_compute_subnetwork" "run" {
   name          = "${var.service_name}-run"
   region        = var.region
@@ -23,10 +20,7 @@ resource "google_compute_subnetwork" "run" {
 }
 
 # --- Private Services Access -------------------------------------------------------
-# Reserved range that Google-managed services (Cloud SQL) allocate their private IPs
-# from, plus the peering that makes them reachable. Created unconditionally: the
-# reservation and peering are free, and they are the slow, fiddly part of adding a
-# database later.
+# Range Cloud SQL allocates its private IP from, plus the peering that reaches it.
 
 resource "google_compute_global_address" "private_services" {
   name          = "${var.service_name}-private-services"

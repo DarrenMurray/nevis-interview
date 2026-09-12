@@ -12,17 +12,10 @@ terraform {
     }
   }
 
-  # Remote state in GCS so local runs and CI operate on the same state. GCS provides
-  # locking natively (via object generations), so two concurrent applies cannot corrupt
-  # state — there is no separate lock table to provision.
-  #
-  # The bucket name is hardcoded rather than passed via -backend-config on purpose:
-  # backends cannot take variables, and a value committed here is the single source of
-  # truth that keeps a laptop and a workflow pointed at the same object. A per-machine
-  # backend.hcl would let them silently diverge, which is the failure this is meant to
-  # prevent.
-  #
-  # The bucket must exist before `terraform init`: create it with `make tf-bootstrap`.
+  # Shared state so local and CI runs agree. GCS locks natively via object generations.
+  # Hardcoded rather than -backend-config: backends cannot take variables, and a committed
+  # value stops a laptop and a workflow diverging.
+  # The bucket must exist before `terraform init` — see `make tf-bootstrap`.
   backend "gcs" {
     bucket = "interview-prep-505511-tfstate"
     prefix = "search-api"

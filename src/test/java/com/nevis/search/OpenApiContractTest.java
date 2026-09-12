@@ -19,14 +19,12 @@ import java.util.TreeSet;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Guards the OpenAPI document against drifting from what the API actually serves.
+ * Guards the OpenAPI document against drifting from what the API serves.
  *
- * <p>This is not a formality. Spring Boot 4 serialises with Jackson 3, but swagger-core builds
- * schemas with its own bundled Jackson 2 and so cannot see
- * {@code spring.jackson.property-naming-strategy}. Left alone, the document advertises
- * {@code firstName} while the endpoints return {@code first_name} — documentation that is worse
- * than none, because it looks authoritative. {@code OpenApiConfig#snakeCaseModelResolver} corrects
- * it; these tests fail if that bean is removed or the two naming settings diverge.
+ * <p>swagger-core builds schemas with its own Jackson 2 mapper and cannot see
+ * {@code spring.jackson.property-naming-strategy}, so without
+ * {@code OpenApiConfig#snakeCaseModelResolver} the document says {@code firstName} while the API
+ * returns {@code first_name}. These tests fail if that bean is removed.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class OpenApiContractTest {
@@ -67,7 +65,7 @@ class OpenApiContractTest {
     }
 
     @Test
-    @DisplayName("document is OpenAPI 3.1 and describes every endpoint in the assignment spec")
+    @DisplayName("document is OpenAPI 3.1 and covers every endpoint")
     void documentCoversTheSpec() throws Exception {
         JsonNode doc = get("/v3/api-docs");
 
@@ -76,15 +74,13 @@ class OpenApiContractTest {
                 .containsExactlyInAnyOrder(
                         "/clients",
                         "/clients/{clientId}/documents",
-                        // The three spec endpoints, plus the two per-type searches the UI's
-                        // buttons call. Exact matching is deliberate: a new endpoint should
-                        // fail this test until someone decides it belongs in the contract.
+                        // Exact match is deliberate: a new endpoint fails this test until
+                        // someone decides it belongs in the contract.
                         "/search",
                         "/search/clients",
                         "/search/documents");
 
-        // The UI's HTML fragment endpoints must NOT appear — the document describes the API,
-        // and /ui/** returns markup.
+        // /ui/** returns markup, not API surface.
         assertThat(fieldNames(doc.get("paths")))
                 .noneMatch(path -> path.startsWith("/ui"));
         assertThat(doc.at("/paths/~1clients/post/responses").propertyNames())
@@ -110,8 +106,8 @@ class OpenApiContractTest {
     @Test
     @DisplayName("documented Client fields are exactly the fields the API returns")
     void clientSchemaMatchesTheWireFormat() throws Exception {
-        // Every optional field is populated: null fields are dropped from the response by
-        // default-property-inclusion=non_null, which would make the comparison meaningless.
+        // All optional fields populated: non_null inclusion drops nulls, which would make
+        // the comparison vacuous.
         JsonNode served = postJson("/clients", """
                 {
                   "first_name": "John",

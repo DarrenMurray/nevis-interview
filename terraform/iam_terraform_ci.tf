@@ -1,11 +1,7 @@
-# Identity for running Terraform from GitHub Actions.
+# Identity for running Terraform from CI. Separate from github-publisher and far more
+# privileged, so a workflow that only builds images cannot alter infrastructure.
 #
-# Deliberately separate from github-publisher, and far more privileged: applying this
-# config creates service accounts, sets project IAM, and enables APIs. Keeping the two
-# apart means a workflow that only builds images cannot alter infrastructure.
-#
-# Chicken-and-egg: this account is created *by* Terraform, so the first apply has to be
-# run locally by a human. Only subsequent applies can come from CI.
+# Created by Terraform itself, so the first apply must be run locally.
 
 resource "google_service_account" "terraform_ci" {
   account_id   = "terraform-ci"
@@ -19,17 +15,15 @@ resource "google_service_account_iam_member" "terraform_ci_wif" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
 }
 
-# Read and write the state object, and take the state lock. Scoped to the state bucket
-# rather than granting project-wide storage access.
+# State read/write and locking. Bucket-scoped, not project-wide.
 resource "google_storage_bucket_iam_member" "terraform_ci_state" {
   bucket = local.state_bucket
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.terraform_ci.email}"
 }
 
-# Enumerated rather than roles/owner. Still broad — it has to be, since the config manages
-# IAM and service accounts — but it cannot change billing or delete the project, and the
-# list documents exactly what the config actually touches.
+# Enumerated rather than roles/owner: broad, but cannot change billing or delete the
+# project, and the list documents what the config touches.
 resource "google_project_iam_member" "terraform_ci" {
   for_each = toset([
     "roles/serviceusage.serviceUsageAdmin",  # enable APIs

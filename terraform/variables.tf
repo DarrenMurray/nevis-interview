@@ -49,12 +49,15 @@ variable "deploy_on_push" {
 
 variable "enable_cloud_sql" {
   description = <<-EOT
-    Create the Cloud SQL Postgres instance. Off by default because it bills hourly whether
-    or not anything connects. The networking it needs is created regardless, so turning
-    this on is a one-line change rather than a re-architecture.
+    Create the Cloud SQL Postgres instance.
+
+    On by default: the application runs Flyway at startup and exits if it cannot reach a
+    database, so with this disabled the Cloud Run service will crash-loop rather than
+    serve a degraded version. Set it to false only when deliberately tearing the database
+    down, and expect the API to be down with it.
   EOT
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "cloud_sql_tier" {
@@ -78,6 +81,18 @@ variable "state_bucket" {
   EOT
   type        = string
   default     = ""
+}
+
+variable "db_name" {
+  description = "Database name inside the instance."
+  type        = string
+  default     = "search"
+}
+
+variable "db_user" {
+  description = "Application database user."
+  type        = string
+  default     = "search_api"
 }
 
 variable "initial_image" {
