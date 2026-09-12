@@ -3,34 +3,36 @@
 Take-home assignment for Nevis: a search API over **clients** and **client documents** for a
 WealthTech advisor platform.
 
-An advisor needs to find things two different ways, and those two ways need different machinery:
+### Preview the App: https://search-api-mjikdl7cpq-nw.a.run.app/
+Example Client search : ""
 
-| Query | Should return | Because |
-|---|---|---|
-| `NevisWealth` | the client `john.doe@neviswealth.com` | **lexical** — case-insensitive substring of the email domain |
-| `address proof` | a document containing *"utility bill"* | **semantic** — the two phrases share no characters, so keyword matching cannot connect them |
+Example Document search : ""
 
-> ### Status: schema and plumbing in place, search not implemented
->
-> The endpoints validate their input and return correctly-shaped responses, and there is a real
-> Postgres schema with the indexes both search paths need. What is **not** built yet: the
-> repositories that read and write those tables, the embedding model, and the search queries
-> themselves. `GET /search` still returns `[]` for every query. This documents the contract.
+See sample Dataset for more search examples:
 
-## Requirements
+### Technologies
 
 - **Java 25** (the build will refuse anything older with an actionable message)
 - **Docker + Compose** — for the local Postgres. Not needed to run `make test`, which is
   deliberately database-free
 - Maven is **not** required — use the committed wrapper (`./mvnw`)
+- ...
 
-## Quick start
+### Directory Tree
+...
+
+### Component Diagram
+- ...
+
+## Developer Guide
+
+### Local setup
 
 ```sh
 docker compose up --build     # API on :8080, Postgres on :5432
 ```
 
-That is the whole local setup. The app applies its own Flyway migrations at startup, so the
+The app applies its own Flyway migrations at startup, so the
 database provisions itself on first run — no init script, no manual `psql`.
 
 ```sh
@@ -52,7 +54,7 @@ make JDK=/path/to/jdk-25 test
 The variable is `JDK`, **not** `JAVA_HOME` — an inherited `JAVA_HOME` from an older JDK would
 otherwise win silently and produce a confusing compile failure.
 
-## Web UI
+#### UI
 
 `http://localhost:8080/` serves a search page: a centred box and two buttons, **Find Documents**
 and **Find Clients**. Each button calls its own endpoint, and the chosen button decides which of
@@ -260,6 +262,18 @@ documents   id uuid pk, client_id uuid fk -> clients on delete cascade,
 `embedding` is nullable so a document can be stored before it has been embedded. `citext` makes
 email comparison case-insensitive without scattering `lower()` through every query.
 
+### Demo data
+
+[`V2__seed.sql`](src/main/resources/db/migration/V2__seed.sql) seeds 6 clients and 13 documents.
+It is a migration rather than a local-only script, so the deployed demo has content too.
+
+The documents are worded the way real paperwork is — a water bill, a council tax demand, a
+passport scan, a tenancy agreement. **None of them contains the phrase "address proof"**, so that
+query can only ever succeed through semantic similarity rather than by accidentally matching text.
+
+Two clients share the `neviswealth.com` domain, so `?q=NevisWealth` returns both — which is the
+realistic outcome, not a single contrived hit.
+
 ## How search works
 
 The two cases in the brief need different machinery, so they are two queries with two ranking
@@ -431,8 +445,5 @@ scripts/                    image smoke test, state-bucket bootstrap
 terraform/                  GCP: Cloud Run, Cloud SQL, registry, push-triggered deploy
 .github/workflows/          test, publish-image, deploy
 ```
-
-DTOs are records; validation annotations live on them. `snake_case` comes from one Jackson property
-(`spring.jackson.property-naming-strategy`) rather than per-field `@JsonProperty`.
 
 
