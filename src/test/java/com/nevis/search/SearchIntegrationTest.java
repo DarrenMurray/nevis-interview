@@ -1,7 +1,10 @@
 package com.nevis.search;
 
 import com.nevis.search.dto.SearchResultResponse;
+import com.nevis.search.search.DocumentEmbedder;
 import com.nevis.search.search.SearchService;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +39,23 @@ class SearchIntegrationTest {
 
     @Autowired
     SearchService search;
+
+    @Autowired
+    DocumentEmbedder embedder;
+
+    @BeforeAll
+    static void ensureDockerAvailable() {
+        // Fails clearly rather than as a cryptic container-fetch error.
+        assertThat(postgres.isRunning()).isTrue();
+    }
+
+    @BeforeEach
+    void embedSeededDocuments() {
+        // @SpringBootTest never publishes ApplicationReadyEvent, so the backfill that runs in
+        // the real app does not fire here. Without this the semantic assertions below would
+        // pass for the wrong reason: no vectors means no hits.
+        embedder.backfill();
+    }
 
     private static List<String> emails(List<SearchResultResponse> results) {
         return results.stream().map(r -> r.client().email()).toList();
@@ -92,12 +112,30 @@ class SearchIntegrationTest {
     }
 
     @Test
-    @DisplayName("'address proof' finds nothing until embeddings land")
-    void semanticCaseIsNotYetImplemented() {
-        // Pinned deliberately: the phrase appears nowhere in the seed data, so this can only
-        // ever pass through semantic similarity. When embeddings are wired in, this test
-        // should be inverted to assert the utility bill IS returned.
-        assertThat(search.searchDocuments("address proof")).isEmpty();
+    @DisplayName("'address proof' returns the utility bill, which shares no words with it")
+    void semanticSearchBridgesUnrelatedWording() {
+        List<SearchResultResponse> results = search.searchDocuments("address proof");
+
+        // The phrase appears nowhere in the seed data, so a lexical match is impossible and
+        // this can only succeed through embedding similarity.
+        assertThat(titles(results)).contains("Utility Bill - March 2026");
+        assertThat(titles(results).getFirst()).isEqualTo("Utility Bill - March 2026");
+    }
+
+    @Test
+    @DisplayName("semantic search rejects nonsense rather than ranking the whole table")
+    void semanticSearchHasAFloor() {
+        // Every vector has some distance to every other, so without a distance cutoff an
+        // unrelated query would return all 13 documents in arbitrary order.
+        assertThat(search.searchDocuments("zebra unicorn nonsense")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("documents are embedded per passage, not once per document")
+    void documentsAreChunked() {
+        // A utility bill's content is mostly account numbers; the sentence establishing
+        // residence only ranks if passages are embedded separately.
+        assertThat(search.searchDocuments("who lives at the property")).isNotEmpty();
     }
 
     @Test

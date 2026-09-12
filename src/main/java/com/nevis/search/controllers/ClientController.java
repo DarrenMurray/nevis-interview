@@ -2,6 +2,7 @@ package com.nevis.search.controllers;
 
 import com.nevis.search.dto.ClientResponse;
 import com.nevis.search.dto.CreateClientRequest;
+import com.nevis.search.store.ClientStore;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -9,20 +10,27 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
-import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/clients")
 @Tag(name = "Clients")
 public class ClientController {
+
+    private final ClientStore clients;
+
+    ClientController(ClientStore clients) {
+        this.clients = clients;
+    }
 
     @Operation(
             summary = "Create a client",
@@ -36,20 +44,19 @@ public class ClientController {
                     description = "A required field is missing, or the email is malformed.",
                     content = @Content),
             @ApiResponse(responseCode = "409",
-                    description = "Not yet implemented — a client with this email already exists.",
+                    description = "A client with this email already exists.",
                     content = @Content)
     })
     @PostMapping
     public ResponseEntity<ClientResponse> create(@Valid @RequestBody CreateClientRequest request) {
-        // TODO: persist. Stubbed: echoes the request with a generated id.
-        String id = UUID.randomUUID().toString();
-        ClientResponse body = new ClientResponse(
-                id,
-                request.firstName(),
-                request.lastName(),
-                request.email(),
-                request.description(),
-                request.socialLinks() == null ? List.of() : request.socialLinks());
-        return ResponseEntity.created(URI.create("/clients/" + id)).body(body);
+        ClientResponse body;
+        try {
+            body = clients.insert(request);
+        } catch (DuplicateKeyException e) {
+            // email is UNIQUE and citext, so this also catches a differently-cased duplicate.
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "A client with that email already exists");
+        }
+        return ResponseEntity.created(URI.create("/clients/" + body.id())).body(body);
     }
 }

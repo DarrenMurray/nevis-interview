@@ -43,6 +43,8 @@ services:
       DB_PASSWORD: search_api
       # Size the heap from the cgroup limit, not the host's memory.
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+      # Cosine-distance cutoff for semantic hits. Overridable for tuning.
+      SEARCH_SEMANTIC_MAX_DISTANCE: ${SEARCH_SEMANTIC_MAX_DISTANCE:-0.75}
     ports:
       - "8080:8080"
     healthcheck:

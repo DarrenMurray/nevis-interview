@@ -2,6 +2,9 @@ package com.nevis.search.controllers;
 
 import com.nevis.search.dto.CreateDocumentRequest;
 import com.nevis.search.dto.DocumentResponse;
+import com.nevis.search.search.DocumentEmbedder;
+import com.nevis.search.store.ClientStore;
+import com.nevis.search.store.DocumentStore;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -10,7 +13,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,13 +23,21 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
-import java.time.OffsetDateTime;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/clients/{clientId}/documents")
 @Tag(name = "Documents")
 public class DocumentController {
+
+    private final ClientStore clients;
+    private final DocumentStore documents;
+    private final DocumentEmbedder embedder;
+
+    DocumentController(ClientStore clients, DocumentStore documents, DocumentEmbedder embedder) {
+        this.clients = clients;
+        this.documents = documents;
+        this.embedder = embedder;
+    }
 
     @Operation(
             summary = "Attach a document to a client",
@@ -39,7 +52,7 @@ public class DocumentController {
                     description = "`title` or `content` is missing or blank.",
                     content = @Content),
             @ApiResponse(responseCode = "404",
-                    description = "Not yet implemented — no client exists with this id.",
+                    description = "No client exists with this id.",
                     content = @Content)
     })
     @PostMapping
@@ -48,16 +61,18 @@ public class DocumentController {
                     example = "f7231496-3fcc-474c-bf02-930aecbd37af")
             @PathVariable String clientId,
             @Valid @RequestBody CreateDocumentRequest request) {
-        // TODO: verify the client exists (404 if not) and persist.
-        String id = UUID.randomUUID().toString();
-        DocumentResponse body = new DocumentResponse(
-                id,
-                clientId,
-                request.title(),
-                request.content(),
-                OffsetDateTime.now());
+        if (!clients.exists(clientId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such client");
+        }
+
+        DocumentResponse body = documents.insert(clientId, request);
+
+        // Embedded synchronously so the document is searchable as soon as this returns.
+        // Deferring it would make a create-then-search sequence non-deterministic.
+        embedder.embed(body);
+
         return ResponseEntity
-                .created(URI.create("/clients/" + clientId + "/documents/" + id))
+                .created(URI.create("/clients/" + clientId + "/documents/" + body.id()))
                 .body(body);
     }
 }

@@ -7,3 +7,9 @@ spring:
   datasource:
     hikari:
       initialization-fail-timeout: 1
+
+search:
+  embedding:
+    # Re-enabled: the base test config disables it, and these tests call backfill() directly
+    # because @SpringBootTest never publishes ApplicationReadyEvent.
+    backfill: true
