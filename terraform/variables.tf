@@ -114,6 +114,9 @@ variable "alert_email" {
   EOT
   type        = string
   default     = ""
+  # Marked sensitive so it is redacted from plan output. The deploy workflow publishes the plan
+  # to the job summary, and on a public repository those logs are world-readable.
+  sensitive = true
 }
 
 variable "rate_limit_requests_per_minute" {

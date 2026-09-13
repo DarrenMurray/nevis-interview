@@ -39,6 +39,8 @@ resource "google_project_iam_member" "terraform_ci" {
     "roles/cloudbuild.builds.editor",        # the deploy trigger
     "roles/secretmanager.admin",             # database password secret
     "roles/cloudsql.admin",                  # only used when enable_cloud_sql = true
+    "roles/logging.configWriter",            # log-based metrics
+    "roles/monitoring.editor",               # alert policies and notification channels
   ])
 
   project = var.project_id

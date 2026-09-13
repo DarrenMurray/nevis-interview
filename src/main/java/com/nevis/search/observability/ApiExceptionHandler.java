@@ -16,10 +16,9 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 /**
  * Uniform error responses and one structured log line per failure.
  *
- * <p>Extends Spring's own handler rather than replacing it. A bare
- * {@code @ExceptionHandler(Exception.class)} swallows the framework's exceptions too, so a failed
- * {@code @Valid} check stops being a 400 and becomes a 500 - which is exactly what happened here
- * before this class was reworked.
+ * <p>Extends Spring's handler rather than replacing it. A bare
+ * {@code @ExceptionHandler(Exception.class)} intercepts framework exceptions as well, turning a
+ * failed {@code @Valid} check into a 500.
  *
  * <p>Expected failures are logged at WARN without a stack trace; unexpected ones at ERROR with
  * the exception, because only those are worth alerting on. Both inherit the request context the
@@ -43,9 +42,8 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Anything unhandled. The response message is deliberately generic: an exception message can
-     * carry SQL fragments or internal identifiers that do not belong in a public response. The
-     * detail goes to the log, keyed by the request id the caller has in X-Request-Id.
+     * Anything unhandled. The response message is generic because exception messages can carry
+     * SQL fragments and internal identifiers. Detail goes to the log, keyed by request id.
      */
     @ExceptionHandler(Exception.class)
     public ProblemDetail onUnexpected(Exception e) {

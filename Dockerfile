@@ -25,8 +25,8 @@ RUN apt-get update \
     && curl -fsSL -o /build/onnx/tokenizer.json "${MINILM}/tokenizer.json" \
     && test -s /build/onnx/model.onnx && test -s /build/onnx/tokenizer.json
 
-# Load the model once so DJL downloads its native libraries into a cache we can bake in.
-# Without this the first embed at runtime fetches ~200MB of natives.
+# Load the model once so DJL populates its native library cache, which is copied into the
+# runtime image. Without this the first embed at runtime downloads ~200MB.
 ENV DJL_CACHE_DIR=/build/djl
 RUN SPRING_AI_EMBEDDING_TRANSFORMER_ONNX_MODEL_URI=file:/build/onnx/model.onnx \
     SPRING_AI_EMBEDDING_TRANSFORMER_TOKENIZER_URI=file:/build/onnx/tokenizer.json \

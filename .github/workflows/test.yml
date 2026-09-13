@@ -27,8 +27,8 @@ jobs:
           java-version: '25'
           cache: maven
 
-      # JDK, not JAVA_HOME: the Makefile deliberately uses its own variable so an
-      # inherited JAVA_HOME cannot silently override the required Java version.
+      # JDK, not JAVA_HOME: the Makefile uses its own variable so an inherited JAVA_HOME
+      # cannot override the required Java version.
       - name: Run tests
         run: make JDK="$JAVA_HOME" test
 
@@ -43,7 +43,20 @@ jobs:
       - name: Build image
         run: make docker-build
 
-      # Boots the image and asserts it serves traffic. This is the only check that
-      # exercises the Dockerfile's assembly - the Maven suite never touches it.
-      - name: Smoke test image
-        run: make docker-smoke
+      # End-to-end check of the compose stack against the three core use cases. The only
+      # job that exercises the Dockerfile, the migrations and the embedding backfill.
+      - name: End-to-end tests
+        run: |
+          set -o pipefail
+          make docker-smoke 2>&1 | tee smoke.log
+
+      - name: Publish end-to-end results
+        if: always()
+        run: |
+          {
+            echo "### End-to-end (docker compose)"
+            echo '```'
+            # From the first check group onwards; the build output above is noise here.
+            sed -n '/^Schema$/,$p' smoke.log || echo "stack did not start"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -127,8 +127,8 @@ resource "google_monitoring_alert_policy" "any_request" {
   }
 }
 
-# Errors are worth knowing about separately: the traffic alert is expected to fire routinely,
-# so it is the wrong thing to watch for faults.
+# Separate from the traffic alert, which fires routinely and is therefore unsuitable for
+# detecting faults.
 resource "google_monitoring_alert_policy" "errors" {
   count = var.alert_email == "" ? 0 : 1
 

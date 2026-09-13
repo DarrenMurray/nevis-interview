@@ -49,8 +49,12 @@ output "database_host" {
 }
 
 output "alerting" {
-  description = "Whether traffic and error alerts were created, and where they notify."
-  value       = var.alert_email == "" ? "disabled (set TF_VAR_alert_email to enable)" : "enabled, notifying ${var.alert_email}"
+  description = "Whether traffic and error alerts were created."
+  # Reports only whether alerting exists, never the address. The deploy workflow publishes
+  # outputs to the job summary, and on a public repository those logs are world-readable.
+  # nonsensitive() because the derived string carries no more than on/off - without it
+  # Terraform propagates the taint from alert_email and refuses the output entirely.
+  value = nonsensitive(var.alert_email == "" ? "disabled (set TF_VAR_alert_email to enable)" : "enabled")
 }
 
 output "logs_url" {
