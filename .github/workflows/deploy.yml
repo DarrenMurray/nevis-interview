@@ -4,7 +4,7 @@ name: deploy
 #
 #   pull request touching terraform/  -> plan only, posted to the run summary
 #   merge to main touching terraform/ -> apply
-#   manual dispatch                   -> plan or apply, your choice
+#   manual dispatch                   -> plan or apply
 #
 # The very first apply must be run locally: this workflow authenticates as the
 # terraform-ci service account, which does not exist until Terraform has created it.
@@ -120,7 +120,11 @@ jobs:
 
       - name: Plan
         working-directory: terraform
-        run: terraform plan -no-color -out=tfplan | tee plan.txt
+        # pipefail is required: without it the pipeline reports tee's exit status, a failed
+        # plan is treated as success, and Apply runs against an incomplete plan file.
+        run: |
+          set -o pipefail
+          terraform plan -no-color -out=tfplan | tee plan.txt
 
       - name: Publish plan to summary
         if: always()
@@ -136,7 +140,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Apply
-        if: steps.decide.outputs.operation == 'apply'
+        # success() guards against a later step being reached after an earlier failure.
+        if: success() && steps.decide.outputs.operation == 'apply'
         working-directory: terraform
         # Applies the saved plan, not a fresh one, so what was reviewed is what runs.
         run: terraform apply -no-color -auto-approve tfplan

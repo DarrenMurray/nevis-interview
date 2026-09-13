@@ -2,9 +2,6 @@
 
 Cloud Run service, Artifact Registry, and a push-triggered redeploy, on GCP.
 
-**Nothing here has been applied.** The configuration is `terraform validate`-clean against
-provider `hashicorp/google ~> 8.2`, but no resource has been created and no cost incurred.
-
 ## The deploy loop
 
 ```
@@ -23,7 +20,7 @@ manual "Run workflow"  ├─►  publish-image.yml  ─►  Artifact Registry
                                                     Cloud Run service
 ```
 
-The push and the deploy are deliberately decoupled. An image pushed from a laptop rolls
+The push and the deploy are decoupled. An image pushed from any source rolls
 out exactly like one pushed by CI, because the registry - not the workflow - is what
 triggers the rollout.
 
@@ -73,23 +70,21 @@ the bucket, not project-wide) plus the enumerated project roles in
 
 ## Prerequisites
 
-- `terraform` >= 1.9 - not installed by the project; grab it from
-  [releases.hashicorp.com](https://releases.hashicorp.com/terraform/)
+- `terraform` >= 1.9, from [releases.hashicorp.com](https://releases.hashicorp.com/terraform/)
 - `gcloud`, authenticated: `gcloud auth login && gcloud auth application-default login`
-- **A dedicated GCP project with billing enabled.** Create it first; Terraform does not
-  create the project or attach billing.
+- A GCP project with billing enabled. Terraform does not create the project or attach billing.
 
 ### Provider cache (recommended)
 
-The google provider is ~145MB. Without a shared cache every project vendors its own copy
-into `.terraform/providers`. Configure it once in `~/.terraformrc`:
+The google provider is ~145MB and is otherwise copied into each project's `.terraform/providers`.
+Configure a shared cache once in `~/.terraformrc`:
 
 ```hcl
 plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"
 plugin_cache_may_break_dependency_lock_file = false
 ```
 
-`.terraform/` then holds symlinks - 40K instead of 145M per project.
+`.terraform/` then holds symlinks.
 
 ## Apply
 
@@ -116,7 +111,7 @@ same file works everywhere with no mapping layer:
 
 ```sh
 make tf-plan                    # the Makefile exports them for you
-set -a; . ./.env; set +a        # ...or export them into your shell
+set -a; . ./.env; set +a        # or export them into the shell
 terraform plan                  #    and bare terraform then works too
 ```
 
@@ -132,7 +127,7 @@ Each is exported only when non-empty. An exported-but-empty `TF_VAR_region` woul
 override the variable's default with `""` instead of leaving it unset - a confusing way
 to deploy into a nonexistent region.
 
-**If bare `terraform plan` prompts for `project_id`, your shell has not got the variables**
+A bare `terraform plan` prompting for `project_id` means the shell does not have the variables
 - either source `.env` as above or use `make tf-plan`.
 
 **Do not add a `terraform.tfvars`.** It takes precedence over `TF_VAR_*`, so a stale value
@@ -166,38 +161,33 @@ Secrets → New repository secret):
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `gha_workload_identity_provider` | both |
 | `GCP_SERVICE_ACCOUNT` | `gha_service_account` | `publish-image` |
 | `GCP_TERRAFORM_SERVICE_ACCOUNT` | `gha_terraform_service_account` | `deploy` |
-| `ALERT_EMAIL` *(optional)* | your own address | `deploy` - where traffic and error alerts go |
+| `ALERT_EMAIL` *(optional)* | notification address | `deploy` - destination for traffic and error alerts |
 
-Strictly, none of these is sensitive - that is the point of federation, and they would
-work equally well as repository variables. They are secrets because that is one place to
-look rather than two, and because it keeps them out of logs by default.
+The `deploy` workflow fails if any required secret is unset. An unset secret arrives as an empty
+string, which would otherwise surface as an API error mid-apply.
 
-The `deploy` workflow **fails fast if any of them is unset**: an unset secret arrives as
-an empty string, and an empty `project_id` would otherwise surface as a baffling mid-apply
-API error rather than an obvious misconfiguration.
-
-Only `DarrenMurray/nevis-interview` can exchange a token, enforced by the provider's
-`attribute_condition`. Without that condition any repository on the internet could
-authenticate - it is the security boundary, not a nicety.
+The provider's `attribute_condition` restricts token exchange to a single repository. Without it,
+any repository could authenticate against this provider.
 
 ### Alerting
 
 `ALERT_EMAIL` is the one secret that is optional. Unset, it resolves to an empty string and
 Terraform skips the notification channel and both alert policies entirely, so the stack still
-applies. Set it and you get:
+applies. Set it and this creates:
 
 | Alert | Fires when |
 |---|---|
 | traffic received | at least one request in a 60 second window |
 | server errors | any ERROR log line in a 60 second window |
 
-It is a secret rather than a variable only to keep a personal address out of the repository.
+Cloud Monitoring alerts on incidents rather than events. The traffic alert opens an incident when
+traffic appears, stays quiet while it continues, and auto-closes after 30 minutes, so a later
+burst opens a new incident. It does not send one email per request.
 
-Cloud Monitoring alerts on **incidents, not events**: the traffic alert emails you when traffic
-starts, then stays quiet while it continues, and auto-closes after 30 minutes so a later burst
-emails again. It is not one email per request, and nothing in Cloud Monitoring can be.
+Email notification channels created through the API are unverified and deliver nothing until
+verified with the code sent by `notificationChannels.sendVerificationCode`.
 
-Locally, set it in `.env` as `TF_VAR_alert_email` - that file is gitignored.
+Locally the address is set in `.env` as `TF_VAR_alert_email`.
 
 ### The first apply must be local
 
@@ -218,7 +208,7 @@ that the identity is meant to run, not a limitation of the setup.
 |---|---|
 | pull request touching `terraform/**` | `plan`, posted to the run summary |
 | merge to `main` touching `terraform/**` | `apply` |
-| manual dispatch | `plan` or `apply`, your choice |
+| manual dispatch | `plan` or `apply` |
 
 `apply` runs the **saved plan file**, not a fresh plan, so what was reviewed is what runs.
 Concurrency is pinned to a single `terraform-state` group with cancellation disabled -
@@ -226,7 +216,7 @@ state is shared with local runs, and killing a job mid-apply would leave the loc
 
 ## Identities
 
-Four service accounts, deliberately separate:
+Four service accounts:
 
 | Account | Can | Cannot |
 |---|---|---|
@@ -235,8 +225,7 @@ Four service accounts, deliberately separate:
 | `search-api-deployer` | deploy Cloud Run revisions, act as the runtime account | push images |
 | `search-api-run` | read secrets, connect to Cloud SQL | deploy, push |
 
-The image publisher cannot change what is running, so a leaked publish token cannot
-deploy arbitrary code. `terraform-ci` is necessarily broad - the config manages IAM and
+The image publisher cannot change what is running, so a leaked publish token cannot deploy code. `terraform-ci` is necessarily broad - the config manages IAM and
 service accounts - but its roles are enumerated rather than `roles/owner`, so the list
 doubles as documentation of what the config touches.
 
@@ -275,7 +264,7 @@ Idle cost is close to zero by design: Cloud Run scales to zero (`min_instances =
 a VPC, subnet, reserved range and peering are all free. What does cost money: Artifact
 Registry storage beyond the free tier, Cloud Build minutes per deploy, and Cloud SQL the
 moment `enable_cloud_sql` is true. Set `min_instances = 1` to avoid JVM cold starts and
-you pay for that instance continuously.
+that instance is billed continuously.
 
 ## Teardown
 

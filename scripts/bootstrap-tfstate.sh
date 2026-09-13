@@ -25,8 +25,7 @@ echo
 if gcloud storage buckets describe "gs://$BUCKET" --project "$PROJECT" >/dev/null 2>&1; then
     echo "Bucket already exists - re-applying settings."
 else
-    # Uniform bucket-level access: ACLs and IAM disagreeing about who can read state is a
-    # bad way to find out your state was world-readable.
+    # Uniform bucket-level access, so object ACLs cannot grant access that IAM denies.
     gcloud storage buckets create "gs://$BUCKET" \
         --project "$PROJECT" \
         --location "$LOCATION" \

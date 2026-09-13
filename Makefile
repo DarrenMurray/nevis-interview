@@ -5,8 +5,8 @@
 
 # Java 25 is required. It is installed at ~/.jdks/current but is NOT on PATH (`java`
 # resolves to 17 here), so Maven is always invoked with an explicit JAVA_HOME. This
-# variable is deliberately not named JAVA_HOME: an inherited JAVA_HOME pointing at an
-# older JDK would win over `?=` and break the build in a confusing way.
+# variable is not named JAVA_HOME: an inherited JAVA_HOME pointing at an older JDK would take
+# precedence over `?=`.
 JDK   ?= $(HOME)/.jdks/current
 MVN   := JAVA_HOME=$(JDK) ./mvnw -B
 
@@ -49,13 +49,11 @@ REMOTE_IMAGE ?= $(REGISTRY)/search-api
 # indistinguishable from a hang.
 DOCKER_BUILD_FLAGS ?= --progress=plain
 
-# Plain `docker`, deliberately. An earlier version auto-detected with
-# `$(shell docker info ... || echo sudo docker)`, which silently turned every docker
-# target into a sudo target - and make suppresses the recipe echo, so the sudo password
-# prompt appeared with no visible command and looked exactly like a hang.
+# Plain `docker`. Auto-detecting a sudo fallback routes every target through sudo, whose
+# password prompt is hidden by make's recipe echo suppression.
 #
-# If the daemon is not reachable, check-docker below says so immediately. To use sudo
-# anyway: `make docker-push DOCKER="sudo docker"`.
+# check-docker below reports an unreachable daemon immediately. For sudo:
+# `make docker-push DOCKER="sudo docker"`.
 DOCKER ?= docker
 
 .DEFAULT_GOAL := test
@@ -119,9 +117,8 @@ ci: test docker-build docker-smoke
 ## docker-login  Authenticate Docker against Artifact Registry
 docker-login: check-docker
 	@test -n "$(TF_VAR_project_id)" || { echo "TF_VAR_project_id not set - is .env present?"; exit 1; }
-	@# An access token piped into `docker login` rather than `gcloud auth configure-docker`:
-	@# the credential helper reads $$HOME/.docker/config.json, and under `sudo docker` that is
-	@# root's config, not yours - so the helper silently has no credentials.
+	@# An access token piped into `docker login` rather than `gcloud auth configure-docker`: the
+	@# credential helper reads $$HOME/.docker/config.json, which under `sudo docker` is root's.
 	gcloud auth print-access-token | $(DOCKER) login -u oauth2accesstoken --password-stdin https://$(TF_VAR_region)-docker.pkg.dev
 
 ## docker-push   Build and push :latest to Artifact Registry (this fires the deploy)

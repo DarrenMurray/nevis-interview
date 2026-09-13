@@ -20,17 +20,14 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * A single global token bucket across the whole service.
  *
- * <p>Global rather than per-caller on purpose: the API is unauthenticated, so there is no
- * trustworthy identity to meter against. Per-IP would be trivially defeated and would still allow
- * a spend-out from many addresses, and the thing being protected here is the bill on a personal
- * account, not fairness between callers.
+ * <p>Global rather than per-caller: the API is unauthenticated, so there is no identity to meter
+ * against. The limit bounds total load rather than metering individual callers.
  *
  * <p>Tokens refill continuously rather than resetting on a fixed window, so a caller who runs out
  * regains capacity gradually instead of everyone stampeding at the top of each minute.
  *
- * <p>Limitation worth knowing: the bucket is per instance, so with Cloud Run scaling to N
- * containers the effective ceiling is N times the configured rate. Max instances is capped low
- * for that reason.
+ * <p>The bucket is per instance, so the effective ceiling scales with the number of running
+ * containers.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
