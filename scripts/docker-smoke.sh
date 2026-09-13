@@ -51,6 +51,19 @@ for i in $(seq 1 "$TIMEOUT"); do
     fi
 done
 
+# The API serves traffic before the embedding backfill finishes, so the semantic checks below
+# would run against a partially embedded corpus. Wait for every document to have a vector.
+for i in $(seq 1 "$TIMEOUT"); do
+    pending=$($DOCKER compose exec -T db psql -U search_api -d search -tAc \
+        "SELECT count(*) FROM documents WHERE embedding IS NULL" 2>/dev/null | tr -d '[:space:]')
+    [ "${pending:-1}" = "0" ] && break
+    sleep 1
+    if [ "$i" -eq "$TIMEOUT" ]; then
+        echo "embedding backfill did not finish within ${TIMEOUT}s (${pending} documents pending)" >&2
+        exit 1
+    fi
+done
+
 echo
 echo "Schema"
 tables=$($DOCKER compose exec -T db psql -U search_api -d search -tAc \
@@ -64,10 +77,13 @@ clients=$($DOCKER compose exec -T db psql -U search_api -d search -tAc \
 [ "${clients:-0}" -gt 0 ] && pass "seed data loaded (${clients} clients)" \
                           || fail "no seed data; V2__seed.sql did not apply"
 
+unembedded=$($DOCKER compose exec -T db psql -U search_api -d search -tAc \
+    "SELECT count(*) FROM documents WHERE embedding IS NULL" 2>/dev/null | tr -d '[:space:]')
 embedded=$($DOCKER compose exec -T db psql -U search_api -d search -tAc \
     "SELECT count(*) FROM document_chunks" 2>/dev/null | tr -d '[:space:]')
-[ "${embedded:-0}" -gt 0 ] && pass "documents embedded (${embedded} passages)" \
-                           || fail "no passages; embedding backfill did not run"
+[ "${unembedded:-1}" = "0" ] && [ "${embedded:-0}" -gt 0 ] \
+    && pass "every document embedded (${embedded} passages)" \
+    || fail "${unembedded} documents still unembedded"
 
 echo
 echo "Core use case 1: find clients by email, name or description"
