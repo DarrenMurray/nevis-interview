@@ -2,17 +2,12 @@ name: deploy
 
 # Runs Terraform against the shared GCS state.
 #
-#   pull request touching terraform/  -> plan only, posted to the run summary
 #   merge to main touching terraform/ -> apply
 #   manual dispatch                   -> plan or apply
 #
 # The very first apply must be run locally: this workflow authenticates as the
 # terraform-ci service account, which does not exist until Terraform has created it.
 on:
-  pull_request:
-    paths:
-      - "terraform/**"
-      - ".github/workflows/deploy.yml"
   push:
     branches: [main]
     paths:
